@@ -13,6 +13,9 @@ chrome.action.onClicked.addListener(async (tab) => {
   } else if (isWellfound(tab.url)) {
     console.log("Wellfound job detected");
     await handleWellfoundJob(tab);
+  } else if (isRemoteRocketship(tab.url)) {
+    console.log("Remote Rocketship job detected");
+    await handleRemoteRocketshipJob(tab);
   } else {
     console.log("Generic site - using basic scraping");
     await handleGenericScraping(tab);
@@ -143,6 +146,40 @@ async function handleWellfoundJob(tab) {
     
     setTimeout(() => {
       chrome.tabs.sendMessage(tab.id, { action: "extractWellfound" }).catch(err => {
+        console.error("Message failed:", err);
+      });
+    }, 500);
+    
+    extractionTimer = setTimeout(() => {
+      console.log("Timeout - collected", frameData.length, "responses");
+      combineAndSend();
+    }, 15000);
+    
+  } catch (err) {
+    console.error("Injection failed:", err);
+  }
+}
+
+// ========== REMOTE ROCKETSHIP HANDLING ==========
+
+function isRemoteRocketship(url) {
+  return url.includes('remoterocketship.com/company/');
+}
+
+async function handleRemoteRocketshipJob(tab) {
+  frameData = [];
+  clearTimeout(extractionTimer);
+  
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['content.js']
+    });
+    
+    console.log("Content script injected");
+    
+    setTimeout(() => {
+      chrome.tabs.sendMessage(tab.id, { action: "extractRemoteRocketship" }).catch(err => {
         console.error("Message failed:", err);
       });
     }, 500);

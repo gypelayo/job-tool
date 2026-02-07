@@ -6,7 +6,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     waitForContent().then(() => {
       const jobContent = extractWellfound();
-      sendJobData(jobContent);
+      sendJobData(jobContent, "Wellfound");
+      sendResponse({ started: true });
+    });
+    
+    return true;
+  } else if (request.action === "extractRemoteRocketship") {
+    console.log("[Content] Remote Rocketship extraction");
+    
+    waitForContent().then(() => {
+      const jobContent = extractRemoteRocketship();
+      sendJobData(jobContent, "Remote Rocketship");
       sendResponse({ started: true });
     });
     
@@ -16,7 +26,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     waitForContent().then(() => {
       const jobContent = document.body.innerText;
-      sendJobData(jobContent);
+      sendJobData(jobContent, "Generic");
       sendResponse({ started: true });
     });
     
@@ -196,6 +206,50 @@ function extractWellfound() {
   return formatted;
 }
 
+function extractRemoteRocketship() {
+  console.log("[RemoteRocketship] Starting extraction");
+  
+  // Clone body to avoid modifying page
+  const clone = document.body.cloneNode(true);
+  
+  // Remove unwanted sections
+  const removeSelectors = [
+    'script',
+    'style',
+    'nav',
+    'header',
+    'footer',
+    '[class*="similar"]',
+    '[class*="Similar"]'
+  ];
+  
+  removeSelectors.forEach(selector => {
+    clone.querySelectorAll(selector).forEach(el => el.remove());
+  });
+  
+  // Get all text
+  let fullText = clone.innerText;
+  
+  // Cut off at "Similar Jobs"
+  const similarJobsIndex = fullText.indexOf('Similar Jobs');
+  if (similarJobsIndex > 0) {
+    fullText = fullText.substring(0, similarJobsIndex);
+  }
+  
+  // Cut off at "Discover 100,000+ Remote Jobs"
+  const discoverIndex = fullText.indexOf('Discover 100,000+ Remote Jobs');
+  if (discoverIndex > 0) {
+    fullText = fullText.substring(0, discoverIndex);
+  }
+  
+  // Clean up
+  fullText = cleanText(fullText);
+  
+  console.log("[RemoteRocketship] Extracted", fullText.length, "chars");
+  
+  return fullText;
+}
+
 function cleanText(text) {
   // Remove script/style content that might have leaked through
   text = text.replace(/@font-face[\s\S]*?\}/g, '');
@@ -217,14 +271,18 @@ function cleanText(text) {
   text = text.replace(/Cookie Preferences.*/gi, '');
   text = text.replace(/Browse by:.*/gi, '');
   text = text.replace(/Similar Jobs.*/gi, '');
+  text = text.replace(/Find Your Dream Remote Job.*/gi, '');
+  text = text.replace(/Loved by \d+.*remote workers/gi, '');
+  text = text.replace(/Wall of Love.*/gi, '');
+  text = text.replace(/Frequently asked questions.*/gi, '');
   
   return text.trim();
 }
 
-function sendJobData(text) {
+function sendJobData(text, source) {
   const formatted = `
 URL: ${window.location.href}
-SOURCE: Wellfound (Scraped)
+SOURCE: ${source} (Scraped)
 
 ${text}
 `;
