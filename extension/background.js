@@ -16,6 +16,9 @@ chrome.action.onClicked.addListener(async (tab) => {
   } else if (isRemoteRocketship(tab.url)) {
     console.log("Remote Rocketship job detected");
     await handleRemoteRocketshipJob(tab);
+  } else if (isLinkedIn(tab.url)) {
+    console.log("LinkedIn job detected");
+    await handleLinkedInJob(tab);
   } else {
     console.log("Generic site - using basic scraping");
     await handleGenericScraping(tab);
@@ -180,6 +183,40 @@ async function handleRemoteRocketshipJob(tab) {
     
     setTimeout(() => {
       chrome.tabs.sendMessage(tab.id, { action: "extractRemoteRocketship" }).catch(err => {
+        console.error("Message failed:", err);
+      });
+    }, 500);
+    
+    extractionTimer = setTimeout(() => {
+      console.log("Timeout - collected", frameData.length, "responses");
+      combineAndSend();
+    }, 15000);
+    
+  } catch (err) {
+    console.error("Injection failed:", err);
+  }
+}
+
+// ========== LINKEDIN HANDLING ==========
+
+function isLinkedIn(url) {
+  return url.includes('linkedin.com/jobs/view/');
+}
+
+async function handleLinkedInJob(tab) {
+  frameData = [];
+  clearTimeout(extractionTimer);
+  
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['content.js']
+    });
+    
+    console.log("Content script injected");
+    
+    setTimeout(() => {
+      chrome.tabs.sendMessage(tab.id, { action: "extractLinkedIn" }).catch(err => {
         console.error("Message failed:", err);
       });
     }, 500);
