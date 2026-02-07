@@ -1,4 +1,6 @@
 let port = null;
+let frameData = [];
+let extractionTimer = null;
 
 chrome.action.onClicked.addListener(async (tab) => {
   console.log("=== Extracting from:", tab.url);
@@ -7,51 +9,60 @@ chrome.action.onClicked.addListener(async (tab) => {
   
   if (jobInfo) {
     console.log("Greenhouse job detected:", jobInfo);
-    
-    if (jobInfo.boardToken && jobInfo.jobId) {
-      // Direct URL - we have everything
-      const jobData = await fetchGreenhouseJob(jobInfo.boardToken, jobInfo.jobId);
-      if (jobData) {
-        sendToHost(jobData);
-      } else {
-        console.error("Failed to fetch from API");
-      }
-    } else if (jobInfo.jobId) {
-      // Has job ID but no board token - need to find it from iframes
-      chrome.webNavigation.getAllFrames({ tabId: tab.id }, async (frames) => {
-        let boardToken = null;
-        
-        for (const frame of frames) {
-          const match = frame.url.match(/greenhouse\.io.*[?&]for=([^&]+)/);
-          if (match) {
-            boardToken = match[1];
-            console.log("Found board token from iframe:", boardToken);
-            break;
-          }
-        }
-        
-        if (boardToken) {
-          const jobData = await fetchGreenhouseJob(boardToken, jobInfo.jobId);
-          if (jobData) {
-            sendToHost(jobData);
-          }
-        } else {
-          console.error("Could not find board token");
-        }
-      });
-    }
+    await handleGreenhouseJob(tab, jobInfo);
   } else {
-    console.log("Not a Greenhouse URL, use normal extraction");
-    // Add your fallback scraping logic here if needed
+    console.log("Non-Greenhouse site - using scraping");
+    await handleGenericScraping(tab);
   }
 });
+
+// ========== GREENHOUSE API HANDLING ==========
+
+async function handleGreenhouseJob(tab, jobInfo) {
+  if (jobInfo.boardToken && jobInfo.jobId) {
+    // Direct URL - fetch immediately
+    const jobData = await fetchGreenhouseJob(jobInfo.boardToken, jobInfo.jobId);
+    if (jobData) {
+      sendToHost(jobData);
+    } else {
+      console.error("API failed, falling back to scraping");
+      await handleGenericScraping(tab);
+    }
+  } else if (jobInfo.jobId) {
+    // Need to find board token from iframes
+    chrome.webNavigation.getAllFrames({ tabId: tab.id }, async (frames) => {
+      let boardToken = null;
+      
+      for (const frame of frames) {
+        const match = frame.url.match(/greenhouse\.io.*[?&]for=([^&]+)/);
+        if (match) {
+          boardToken = match[1];
+          console.log("Found board token:", boardToken);
+          break;
+        }
+      }
+      
+      if (boardToken) {
+        const jobData = await fetchGreenhouseJob(boardToken, jobInfo.jobId);
+        if (jobData) {
+          sendToHost(jobData);
+        } else {
+          console.error("API failed, falling back to scraping");
+          await handleGenericScraping(tab);
+        }
+      } else {
+        console.error("No board token found, falling back to scraping");
+        await handleGenericScraping(tab);
+      }
+    });
+  }
+}
 
 function extractGreenhouseInfo(url) {
   try {
     const urlObj = new URL(url);
     
     // Pattern 1: Direct Greenhouse URL
-    // https://job-boards.greenhouse.io/{board_token}/jobs/{job_id}
     const directMatch = url.match(/greenhouse\.io\/([^\/]+)\/jobs\/(\d+)/);
     if (directMatch) {
       return {
@@ -62,11 +73,10 @@ function extractGreenhouseInfo(url) {
     }
     
     // Pattern 2: Custom domain with gh_jid parameter
-    // https://careers.company.com/?gh_jid=123456
     const jobId = urlObj.searchParams.get('gh_jid');
     if (jobId) {
       return {
-        boardToken: null, // Will find from iframe
+        boardToken: null,
         jobId: jobId,
         type: 'embedded'
       };
@@ -74,7 +84,6 @@ function extractGreenhouseInfo(url) {
     
     return null;
   } catch (e) {
-    console.error("URL parse error:", e);
     return null;
   }
 }
@@ -92,7 +101,6 @@ async function fetchGreenhouseJob(boardToken, jobId) {
     const job = await response.json();
     console.log("✓ Got job:", job.title);
     
-    // Extract text from HTML content
     const parser = new DOMParser();
     const doc = parser.parseFromString(job.content, 'text/html');
     const textContent = doc.body.textContent;
@@ -109,6 +117,7 @@ ${textContent}
 
 URL: ${job.absolute_url}
 UPDATED: ${job.updated_at}
+SOURCE: Greenhouse API
 `;
     
     console.log("Extracted", formatted.length, "chars");
@@ -119,6 +128,85 @@ UPDATED: ${job.updated_at}
     return null;
   }
 }
+
+// ========== GENERIC SCRAPING ==========
+
+async function handleGenericScraping(tab) {
+  frameData = [];
+  clearTimeout(extractionTimer);
+  
+  // Inject content script and extract
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['content.js']
+    });
+    
+    console.log("Content script injected, waiting for extraction...");
+    
+    // Wait a moment for injection
+    setTimeout(() => {
+      chrome.tabs.sendMessage(tab.id, { action: "extract" }).catch(err => {
+        console.error("Send message failed:", err);
+      });
+    }, 500);
+    
+    // Timeout after 20 seconds
+    extractionTimer = setTimeout(() => {
+      console.log("Timeout - collected", frameData.length, "responses");
+      combineAndSend();
+    }, 20000);
+    
+  } catch (err) {
+    console.error("Injection failed:", err);
+  }
+}
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "extractText") {
+    const data = request.data;
+    
+    console.log("✓ Received scraped content:", data.contentLength, "chars");
+    
+    frameData.push(data);
+    
+    // If we got substantial content, send it
+    if (data.contentLength > 500) {
+      clearTimeout(extractionTimer);
+      setTimeout(() => combineAndSend(), 2000);
+    }
+    
+    sendResponse({ received: true });
+  }
+});
+
+function combineAndSend() {
+  if (frameData.length === 0) {
+    console.error("No data collected");
+    return;
+  }
+  
+  frameData.sort((a, b) => b.contentLength - a.contentLength);
+  
+  const combined = frameData.map((frame, index) => {
+    return `
+========== SCRAPED CONTENT ==========
+URL: ${frame.url}
+TITLE: ${frame.title}
+LENGTH: ${frame.contentLength} chars
+SOURCE: Web Scraping
+
+${frame.text}
+`;
+  }).join("\n\n");
+  
+  console.log("Sending", combined.length, "chars");
+  sendToHost(combined);
+  
+  frameData = [];
+}
+
+// ========== NATIVE HOST ==========
 
 function sendToHost(text) {
   try {

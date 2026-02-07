@@ -1,70 +1,88 @@
-console.log(`[Content Script] Loaded in: ${window.location.href}`);
-console.log(`[Content Script] Frame type: ${window === window.top ? "MAIN" : "IFRAME"}`);
-console.log(`[Content Script] Hostname: ${window.location.hostname}`);
+console.log("[Content] Loaded on:", window.location.href);
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "extract") {
-    console.log(`[Extract] Starting extraction`);
+    console.log("[Content] Starting extraction");
     
-    if (window.location.hostname.includes('greenhouse.io')) {
-      console.log(`[Extract] Greenhouse iframe detected`);
-      waitForGreenhouseContent();
-    } else {
-      console.log(`[Extract] Regular page`);
-      waitForMainPageContent();
-    }
+    waitForContent().then(() => {
+      extractAndSend();
+      sendResponse({ started: true });
+    });
     
-    sendResponse({received: true});
     return true;
   }
 });
 
-function waitForGreenhouseContent() {
-  let attempts = 0;
-  const maxAttempts = 30;
-  
-  const checkInterval = setInterval(() => {
-    attempts++;
-    const bodyText = document.body ? document.body.innerText : '';
+function waitForContent() {
+  return new Promise((resolve) => {
+    let lastLength = document.body.innerText.length;
+    let stableCount = 0;
+    let elapsed = 0;
+    const maxWait = 15000;
     
-    console.log(`[Greenhouse ${attempts}s] Content: ${bodyText.length} chars`);
+    console.log("[Content] Initial content:", lastLength, "chars");
     
-    if (bodyText.length > 1000 || attempts >= maxAttempts) {
-      clearInterval(checkInterval);
+    const checkInterval = setInterval(() => {
+      elapsed += 1000;
+      const currentLength = document.body.innerText.length;
       
-      console.log(`[Greenhouse] Extracting ${bodyText.length} chars`);
-      console.log(`[Greenhouse] Preview: ${bodyText.substring(0, 200)}`);
+      if (currentLength === lastLength) {
+        stableCount++;
+      } else {
+        stableCount = 0;
+        console.log("[Content] Content changed:", currentLength, "chars");
+      }
       
-      chrome.runtime.sendMessage({
-        action: "extractText",
-        data: {
-          text: bodyText,
-          url: window.location.href,
-          title: document.title,
-          isMainFrame: false,
-          contentLength: bodyText.length,
-          source: 'greenhouse-iframe'
-        }
-      }).catch(err => console.error("[Greenhouse] Send error:", err));
-    }
-  }, 1000);
+      lastLength = currentLength;
+      
+      // Stable for 2 seconds OR timeout
+      if ((stableCount >= 2 && currentLength > 500) || elapsed >= maxWait) {
+        clearInterval(checkInterval);
+        console.log("[Content] Content ready");
+        resolve();
+      }
+    }, 1000);
+  });
 }
 
-function waitForMainPageContent() {
-  setTimeout(() => {
-    const bodyText = document.body ? document.body.innerText : '';
-    console.log(`[Main] Content: ${bodyText.length} chars`);
-    
-    chrome.runtime.sendMessage({
-      action: "extractText",
-      data: {
-        text: bodyText,
-        url: window.location.href,
-        title: document.title,
-        isMainFrame: true,
-        contentLength: bodyText.length,
-        source: 'main-page'
+function extractAndSend() {
+  const fullText = document.body.innerText;
+  
+  // Try to find main content area
+  const contentSelectors = [
+    'main',
+    'article',
+    '[role="main"]',
+    '#content',
+    '.content',
+    '[class*="job"]',
+    '[class*="posting"]',
+    '[class*="description"]'
+  ];
+  
+  let bestContent = fullText;
+  let bestLength = 0;
+  
+  for (const selector of contentSelectors) {
+    const element = document.querySelector(selector);
+    if (element) {
+      const text = element.innerText;
+      if (text.length > bestLength && text.length > 500) {
+        bestContent = text;
+        bestLength = text.length;
       }
-    }).catch(err => console.error("[Main] Send error:", err));
-  }, 2000);
+    }
+  }
+  
+  console.log("[Content] Extracted", bestContent.length, "chars");
+  
+  chrome.runtime.sendMessage({
+    action: "extractText",
+    data: {
+      text: bestContent,
+      url: window.location.href,
+      title: document.title,
+      contentLength: bestContent.length
+    }
+  }).catch(err => console.error("[Content] Send failed:", err));
 }
