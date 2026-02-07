@@ -10,8 +10,11 @@ chrome.action.onClicked.addListener(async (tab) => {
   if (jobInfo) {
     console.log("Greenhouse job detected:", jobInfo);
     await handleGreenhouseJob(tab, jobInfo);
+  } else if (isWellfound(tab.url)) {
+    console.log("Wellfound job detected");
+    await handleWellfoundJob(tab);
   } else {
-    console.log("Non-Greenhouse site - using scraping");
+    console.log("Generic site - using basic scraping");
     await handleGenericScraping(tab);
   }
 });
@@ -20,16 +23,13 @@ chrome.action.onClicked.addListener(async (tab) => {
 
 async function handleGreenhouseJob(tab, jobInfo) {
   if (jobInfo.boardToken && jobInfo.jobId) {
-    // Direct URL - fetch immediately
     const jobData = await fetchGreenhouseJob(jobInfo.boardToken, jobInfo.jobId);
     if (jobData) {
       sendToHost(jobData);
     } else {
-      console.error("API failed, falling back to scraping");
-      await handleGenericScraping(tab);
+      console.error("API failed");
     }
   } else if (jobInfo.jobId) {
-    // Need to find board token from iframes
     chrome.webNavigation.getAllFrames({ tabId: tab.id }, async (frames) => {
       let boardToken = null;
       
@@ -46,13 +46,9 @@ async function handleGreenhouseJob(tab, jobInfo) {
         const jobData = await fetchGreenhouseJob(boardToken, jobInfo.jobId);
         if (jobData) {
           sendToHost(jobData);
-        } else {
-          console.error("API failed, falling back to scraping");
-          await handleGenericScraping(tab);
         }
       } else {
-        console.error("No board token found, falling back to scraping");
-        await handleGenericScraping(tab);
+        console.error("No board token found");
       }
     });
   }
@@ -62,7 +58,6 @@ function extractGreenhouseInfo(url) {
   try {
     const urlObj = new URL(url);
     
-    // Pattern 1: Direct Greenhouse URL
     const directMatch = url.match(/greenhouse\.io\/([^\/]+)\/jobs\/(\d+)/);
     if (directMatch) {
       return {
@@ -72,7 +67,6 @@ function extractGreenhouseInfo(url) {
       };
     }
     
-    // Pattern 2: Custom domain with gh_jid parameter
     const jobId = urlObj.searchParams.get('gh_jid');
     if (jobId) {
       return {
@@ -129,31 +123,60 @@ SOURCE: Greenhouse API
   }
 }
 
-// ========== GENERIC SCRAPING ==========
+// ========== WELLFOUND HANDLING ==========
 
-async function handleGenericScraping(tab) {
+function isWellfound(url) {
+  return url.includes('wellfound.com/jobs/') || url.includes('angel.co/jobs/');
+}
+
+async function handleWellfoundJob(tab) {
   frameData = [];
   clearTimeout(extractionTimer);
   
-  // Inject content script and extract
   try {
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files: ['content.js']
     });
     
-    console.log("Content script injected, waiting for extraction...");
+    console.log("Content script injected");
     
-    // Wait a moment for injection
     setTimeout(() => {
-      chrome.tabs.sendMessage(tab.id, { action: "extract" }).catch(err => {
-        console.error("Send message failed:", err);
+      chrome.tabs.sendMessage(tab.id, { action: "extractWellfound" }).catch(err => {
+        console.error("Message failed:", err);
       });
     }, 500);
     
-    // Timeout after 20 seconds
     extractionTimer = setTimeout(() => {
       console.log("Timeout - collected", frameData.length, "responses");
+      combineAndSend();
+    }, 15000);
+    
+  } catch (err) {
+    console.error("Injection failed:", err);
+  }
+}
+
+// ========== GENERIC SCRAPING ==========
+
+async function handleGenericScraping(tab) {
+  frameData = [];
+  clearTimeout(extractionTimer);
+  
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['content.js']
+    });
+    
+    setTimeout(() => {
+      chrome.tabs.sendMessage(tab.id, { action: "extract" }).catch(err => {
+        console.error("Message failed:", err);
+      });
+    }, 500);
+    
+    extractionTimer = setTimeout(() => {
+      console.log("Timeout");
       combineAndSend();
     }, 20000);
     
@@ -162,15 +185,16 @@ async function handleGenericScraping(tab) {
   }
 }
 
+// ========== MESSAGE HANDLING ==========
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "extractText") {
     const data = request.data;
     
-    console.log("✓ Received scraped content:", data.contentLength, "chars");
+    console.log("✓ Received:", data.contentLength, "chars");
     
     frameData.push(data);
     
-    // If we got substantial content, send it
     if (data.contentLength > 500) {
       clearTimeout(extractionTimer);
       setTimeout(() => combineAndSend(), 2000);
@@ -186,22 +210,9 @@ function combineAndSend() {
     return;
   }
   
-  frameData.sort((a, b) => b.contentLength - a.contentLength);
-  
-  const combined = frameData.map((frame, index) => {
-    return `
-========== SCRAPED CONTENT ==========
-URL: ${frame.url}
-TITLE: ${frame.title}
-LENGTH: ${frame.contentLength} chars
-SOURCE: Web Scraping
-
-${frame.text}
-`;
-  }).join("\n\n");
-  
-  console.log("Sending", combined.length, "chars");
-  sendToHost(combined);
+  const data = frameData[0];
+  console.log("Sending", data.contentLength, "chars");
+  sendToHost(data.text);
   
   frameData = [];
 }
