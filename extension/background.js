@@ -1,44 +1,83 @@
-// background.js - complete replacement
 let port = null;
 
 chrome.action.onClicked.addListener(async (tab) => {
   console.log("=== Extracting from:", tab.url);
   
-  // Check if it's a Greenhouse-based job posting
-  const urlParams = new URLSearchParams(new URL(tab.url).search);
-  const jobId = urlParams.get('gh_jid');
+  const jobInfo = extractGreenhouseInfo(tab.url);
   
-  if (jobId) {
-    console.log("Detected Greenhouse job ID:", jobId);
+  if (jobInfo) {
+    console.log("Greenhouse job detected:", jobInfo);
     
-    // Find the board token by checking iframes
-    chrome.webNavigation.getAllFrames({ tabId: tab.id }, async (frames) => {
-      let boardToken = null;
-      
-      for (const frame of frames) {
-        const match = frame.url.match(/greenhouse\.io.*[?&]for=([^&]+)/);
-        if (match) {
-          boardToken = match[1];
-          console.log("Found board token:", boardToken);
-          break;
-        }
-      }
-      
-      if (boardToken) {
-        const jobData = await fetchGreenhouseJob(boardToken, jobId);
-        if (jobData) {
-          sendToHost(jobData);
-        } else {
-          console.error("Failed to fetch from API");
-        }
+    if (jobInfo.boardToken && jobInfo.jobId) {
+      // Direct URL - we have everything
+      const jobData = await fetchGreenhouseJob(jobInfo.boardToken, jobInfo.jobId);
+      if (jobData) {
+        sendToHost(jobData);
       } else {
-        console.error("Could not find board token");
+        console.error("Failed to fetch from API");
       }
-    });
+    } else if (jobInfo.jobId) {
+      // Has job ID but no board token - need to find it from iframes
+      chrome.webNavigation.getAllFrames({ tabId: tab.id }, async (frames) => {
+        let boardToken = null;
+        
+        for (const frame of frames) {
+          const match = frame.url.match(/greenhouse\.io.*[?&]for=([^&]+)/);
+          if (match) {
+            boardToken = match[1];
+            console.log("Found board token from iframe:", boardToken);
+            break;
+          }
+        }
+        
+        if (boardToken) {
+          const jobData = await fetchGreenhouseJob(boardToken, jobInfo.jobId);
+          if (jobData) {
+            sendToHost(jobData);
+          }
+        } else {
+          console.error("Could not find board token");
+        }
+      });
+    }
   } else {
     console.log("Not a Greenhouse URL, use normal extraction");
+    // Add your fallback scraping logic here if needed
   }
 });
+
+function extractGreenhouseInfo(url) {
+  try {
+    const urlObj = new URL(url);
+    
+    // Pattern 1: Direct Greenhouse URL
+    // https://job-boards.greenhouse.io/{board_token}/jobs/{job_id}
+    const directMatch = url.match(/greenhouse\.io\/([^\/]+)\/jobs\/(\d+)/);
+    if (directMatch) {
+      return {
+        boardToken: directMatch[1],
+        jobId: directMatch[2],
+        type: 'direct'
+      };
+    }
+    
+    // Pattern 2: Custom domain with gh_jid parameter
+    // https://careers.company.com/?gh_jid=123456
+    const jobId = urlObj.searchParams.get('gh_jid');
+    if (jobId) {
+      return {
+        boardToken: null, // Will find from iframe
+        jobId: jobId,
+        type: 'embedded'
+      };
+    }
+    
+    return null;
+  } catch (e) {
+    console.error("URL parse error:", e);
+    return null;
+  }
+}
 
 async function fetchGreenhouseJob(boardToken, jobId) {
   const url = `https://boards-api.greenhouse.io/v1/boards/${boardToken}/jobs/${jobId}`;
