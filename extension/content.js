@@ -1,20 +1,70 @@
-console.log("Content script loaded on:", window.location.href);
+console.log(`[Content Script] Loaded in: ${window.location.href}`);
+console.log(`[Content Script] Frame type: ${window === window.top ? "MAIN" : "IFRAME"}`);
+console.log(`[Content Script] Hostname: ${window.location.hostname}`);
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "extract") {
-    console.log("Extracting from:", window.location.href);
+    console.log(`[Extract] Starting extraction`);
     
-    // Wait 5 seconds for dynamic content to load
-    setTimeout(() => {
-      const completeHTML = document.documentElement.outerHTML;
-      console.log("Extracted length:", completeHTML.length);
-      
-      chrome.runtime.sendMessage({
-        action: "extractText",
-        text: completeHTML
-      }).catch(err => console.error("Error:", err));
-    }, 5000);  // Changed from 3000 to 5000
+    if (window.location.hostname.includes('greenhouse.io')) {
+      console.log(`[Extract] Greenhouse iframe detected`);
+      waitForGreenhouseContent();
+    } else {
+      console.log(`[Extract] Regular page`);
+      waitForMainPageContent();
+    }
     
+    sendResponse({received: true});
     return true;
   }
 });
+
+function waitForGreenhouseContent() {
+  let attempts = 0;
+  const maxAttempts = 30;
+  
+  const checkInterval = setInterval(() => {
+    attempts++;
+    const bodyText = document.body ? document.body.innerText : '';
+    
+    console.log(`[Greenhouse ${attempts}s] Content: ${bodyText.length} chars`);
+    
+    if (bodyText.length > 1000 || attempts >= maxAttempts) {
+      clearInterval(checkInterval);
+      
+      console.log(`[Greenhouse] Extracting ${bodyText.length} chars`);
+      console.log(`[Greenhouse] Preview: ${bodyText.substring(0, 200)}`);
+      
+      chrome.runtime.sendMessage({
+        action: "extractText",
+        data: {
+          text: bodyText,
+          url: window.location.href,
+          title: document.title,
+          isMainFrame: false,
+          contentLength: bodyText.length,
+          source: 'greenhouse-iframe'
+        }
+      }).catch(err => console.error("[Greenhouse] Send error:", err));
+    }
+  }, 1000);
+}
+
+function waitForMainPageContent() {
+  setTimeout(() => {
+    const bodyText = document.body ? document.body.innerText : '';
+    console.log(`[Main] Content: ${bodyText.length} chars`);
+    
+    chrome.runtime.sendMessage({
+      action: "extractText",
+      data: {
+        text: bodyText,
+        url: window.location.href,
+        title: document.title,
+        isMainFrame: true,
+        contentLength: bodyText.length,
+        source: 'main-page'
+      }
+    }).catch(err => console.error("[Main] Send error:", err));
+  }, 2000);
+}

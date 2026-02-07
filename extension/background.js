@@ -1,73 +1,106 @@
+// background.js - complete replacement
 let port = null;
-let frameData = [];
-let extractionTimer = null;
 
-chrome.action.onClicked.addListener((tab) => {
-  console.log("Extension clicked on tab:", tab.id);
+chrome.action.onClicked.addListener(async (tab) => {
+  console.log("=== Extracting from:", tab.url);
   
-  // Reset collection
-  frameData = [];
-  clearTimeout(extractionTimer);
+  // Check if it's a Greenhouse-based job posting
+  const urlParams = new URLSearchParams(new URL(tab.url).search);
+  const jobId = urlParams.get('gh_jid');
   
-  // Trigger extraction in main frame
-  chrome.tabs.sendMessage(tab.id, { action: "extract" }).catch((err) => {
-    console.error("Error sending to main frame:", err);
-  });
-  
-  // Trigger extraction in all subframes
-  chrome.webNavigation.getAllFrames({ tabId: tab.id }, (frames) => {
-    if (frames) {
-      console.log("Found", frames.length, "frames");
-      frames.forEach(frame => {
-        chrome.tabs.sendMessage(tab.id, { action: "extract" }, { frameId: frame.frameId }).catch(() => {});
-      });
-    }
-  });
-  
-  // Wait 7 seconds for all frames to respond, then combine and send
-  extractionTimer = setTimeout(() => {
-    console.log("Timer finished, collected", frameData.length, "frames");
-    if (frameData.length > 0) {
-      const combined = frameData.join("\n\n========== NEXT FRAME ==========\n\n");
-      console.log("Combining", frameData.length, "frames, total length:", combined.length);
-      sendToHost(combined);
-    } else {
-      console.error("No frame data collected!");
-    }
-  }, 7000);  // Increased to 7 seconds
-});
-
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "extractText") {
-    console.log("Received from frame:", sender.frameId, "length:", request.text.length);
-    frameData.push(request.text);
+  if (jobId) {
+    console.log("Detected Greenhouse job ID:", jobId);
+    
+    // Find the board token by checking iframes
+    chrome.webNavigation.getAllFrames({ tabId: tab.id }, async (frames) => {
+      let boardToken = null;
+      
+      for (const frame of frames) {
+        const match = frame.url.match(/greenhouse\.io.*[?&]for=([^&]+)/);
+        if (match) {
+          boardToken = match[1];
+          console.log("Found board token:", boardToken);
+          break;
+        }
+      }
+      
+      if (boardToken) {
+        const jobData = await fetchGreenhouseJob(boardToken, jobId);
+        if (jobData) {
+          sendToHost(jobData);
+        } else {
+          console.error("Failed to fetch from API");
+        }
+      } else {
+        console.error("Could not find board token");
+      }
+    });
+  } else {
+    console.log("Not a Greenhouse URL, use normal extraction");
   }
 });
 
-function sendToHost(text) {
-  console.log("Attempting to connect to native host...");
+async function fetchGreenhouseJob(boardToken, jobId) {
+  const url = `https://boards-api.greenhouse.io/v1/boards/${boardToken}/jobs/${jobId}`;
+  console.log("Fetching:", url);
   
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+    
+    const job = await response.json();
+    console.log("✓ Got job:", job.title);
+    
+    // Extract text from HTML content
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(job.content, 'text/html');
+    const textContent = doc.body.textContent;
+    
+    const formatted = `
+JOB TITLE: ${job.title}
+
+LOCATION: ${job.location?.name || 'Not specified'}
+
+DEPARTMENT: ${job.departments?.map(d => d.name).join(', ') || 'Not specified'}
+
+DESCRIPTION:
+${textContent}
+
+URL: ${job.absolute_url}
+UPDATED: ${job.updated_at}
+`;
+    
+    console.log("Extracted", formatted.length, "chars");
+    return formatted;
+    
+  } catch (error) {
+    console.error("API error:", error);
+    return null;
+  }
+}
+
+function sendToHost(text) {
   try {
     if (!port) {
       port = chrome.runtime.connectNative('com.textextractor.host');
-      console.log("Connected to native host");
       
       port.onMessage.addListener((msg) => {
-        console.log("Host response:", msg);
+        console.log("✓ Host response:", msg);
       });
       
       port.onDisconnect.addListener(() => {
-        console.log("Disconnected from host");
         if (chrome.runtime.lastError) {
-          console.error("Disconnect error:", chrome.runtime.lastError.message);
+          console.error("✗", chrome.runtime.lastError.message);
         }
         port = null;
       });
     }
     
-    console.log("Posting message to host, text length:", text.length);
     port.postMessage({ text: text });
+    console.log("✓ Sent to host");
   } catch (err) {
-    console.error("Error connecting to native host:", err);
+    console.error("✗ Host error:", err);
   }
 }

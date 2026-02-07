@@ -3,10 +3,12 @@ package main
 import (
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 )
 
@@ -15,91 +17,111 @@ type Message struct {
 }
 
 type Response struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
+	Status   string `json:"status"`
+	Filename string `json:"filename"`
 }
 
 func main() {
-	// Setup logging to file
-	logFile, _ := os.Create(filepath.Join(os.TempDir(), "textextractor.log"))
-	defer logFile.Close()
-	log.SetOutput(logFile)
-
-	for {
-		msg, err := readMessage(os.Stdin)
-		if err == io.EOF {
-			break
-		}
-
-		if err != nil {
-			log.Printf("Error reading: %v", err)
-			continue
-		}
-
-		log.Printf("Received text length: %d", len(msg.Text))
-
-		// Get user's home directory
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			log.Printf("Error getting home dir: %v", err)
-			homeDir = os.TempDir()
-		}
-
-		// Save to Downloads folder - RAW HTML, NO PROCESSING
-		downloadsDir := filepath.Join(homeDir, "Downloads")
-		filename := filepath.Join(downloadsDir, "extracted_text_"+time.Now().Format("20060102_150405")+".txt")
-
-		// Save raw HTML directly
-		err = os.WriteFile(filename, []byte(msg.Text), 0644)
-
-		var response Response
-		if err != nil {
-			log.Printf("Error writing file: %v", err)
-			response = Response{Status: "error", Message: err.Error()}
-		} else {
-			log.Printf("Successfully saved to: %s", filename)
-			response = Response{Status: "success", Message: "Saved to " + filename}
-		}
-
-		if err := sendMessage(os.Stdout, response); err != nil {
-			log.Printf("Error sending: %v", err)
-		}
-	}
-}
-
-func readMessage(r io.Reader) (*Message, error) {
-	var length uint32
-	if err := binary.Read(r, binary.LittleEndian, &length); err != nil {
-		return nil, err
-	}
-
-	buf := make([]byte, length)
-	if _, err := io.ReadFull(r, buf); err != nil {
-		return nil, err
-	}
-
-	var msg Message
-	if err := json.Unmarshal(buf, &msg); err != nil {
-		return nil, err
-	}
-
-	return &msg, nil
-}
-
-func sendMessage(w io.Writer, data interface{}) error {
-	buf, err := json.Marshal(data)
+	// Get home directory
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return err
+		log.Printf("Error getting home dir: %v", err)
+		return
 	}
 
-	length := uint32(len(buf))
-	if err := binary.Write(w, binary.LittleEndian, length); err != nil {
-		return err
+	// Set up logging to Downloads folder
+	logPath := filepath.Join(homeDir, "Downloads", "extractor.log")
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err == nil {
+		log.SetOutput(logFile)
+		defer logFile.Close()
 	}
 
-	if _, err := w.Write(buf); err != nil {
-		return err
+	log.Println("Native host started")
+
+	// Read message from extension
+	msg, err := readMessage(os.Stdin)
+	if err != nil {
+		log.Printf("Error reading message: %v", err)
+		return
 	}
 
-	return nil
+	// Parse message
+	var message Message
+	if err := json.Unmarshal(msg, &message); err != nil {
+		log.Printf("Error parsing JSON: %v", err)
+		return
+	}
+
+	log.Printf("Received %d bytes of text", len(message.Text))
+
+	// Create output directory in Downloads
+	outputDir := filepath.Join(homeDir, "Downloads", "extracted_jobs")
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		log.Printf("Error creating directory: %v", err)
+		return
+	}
+
+	// Generate filename with timestamp
+	timestamp := time.Now().Format("2006-01-02_15-04-05")
+	filename := fmt.Sprintf("job_%s.html", timestamp)
+	fullPath := filepath.Join(outputDir, filename)
+
+	// Save to file
+	if err := os.WriteFile(fullPath, []byte(message.Text), 0644); err != nil {
+		log.Printf("Error writing file: %v", err)
+		sendMessage(Response{Status: "error", Filename: ""})
+		return
+	}
+
+	log.Printf("Saved to %s", fullPath)
+
+	// Send success response
+	sendMessage(Response{Status: "success", Filename: fullPath})
+}
+
+// readMessage reads a message from stdin using Chrome native messaging format
+func readMessage(reader io.Reader) ([]byte, error) {
+	// Read 4-byte length header
+	var length uint32
+	if err := binary.Read(reader, binary.LittleEndian, &length); err != nil {
+		return nil, err
+	}
+
+	// Read message body
+	message := make([]byte, length)
+	if _, err := io.ReadFull(reader, message); err != nil {
+		return nil, err
+	}
+
+	return message, nil
+}
+
+// sendMessage sends a message to stdout using Chrome native messaging format
+func sendMessage(response Response) {
+	// Marshal response to JSON
+	data, err := json.Marshal(response)
+	if err != nil {
+		log.Printf("Error marshaling response: %v", err)
+		return
+	}
+
+	// Write 4-byte length header
+	length := uint32(len(data))
+	if err := binary.Write(os.Stdout, binary.LittleEndian, length); err != nil {
+		log.Printf("Error writing length: %v", err)
+		return
+	}
+
+	// Write message body
+	if _, err := os.Stdout.Write(data); err != nil {
+		log.Printf("Error writing message: %v", err)
+		return
+	}
+}
+
+// sanitizeFilename removes invalid characters from filename
+func sanitizeFilename(name string) string {
+	reg := regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
+	return reg.ReplaceAllString(name, "_")
 }
