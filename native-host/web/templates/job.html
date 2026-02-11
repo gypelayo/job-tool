@@ -1,0 +1,58 @@
+{{define "job.html"}}
+{{template "layout.html" .}}
+{{end}}
+
+{{define "content"}}
+<div class="job-detail">
+    <a href="/" class="back-link">← Back to List</a>
+    
+    <h1>{{.Metadata.JobTitle}}</h1>
+    <h2>{{.CompanyInfo.CompanyName}}</h2>
+    
+    <div class="detail-section">
+        <h3>📍 Location & Type</h3>
+        <p>{{.CompanyInfo.Location}} • {{.Metadata.JobType}} • {{.Metadata.WorkplaceType}}</p>
+    </div>
+    
+    <div class="detail-section">
+        <h3>📝 Summary</h3>
+        <p>{{.RoleDetails.Summary}}</p>
+    </div>
+    
+    {{if .RoleDetails.KeyResponsibilities}}
+    <div class="detail-section">
+        <h3>✅ Key Responsibilities</h3>
+        <ul>
+        {{range .RoleDetails.KeyResponsibilities}}
+            <li>{{.}}</li>
+        {{end}}
+        </ul>
+    </div>
+    {{end}}
+    
+    {{if .Requirements.TechnicalSkills.ProgrammingLanguages}}
+    <div class="detail-section">
+        <h3>💻 Technical Skills</h3>
+        <p><strong>Languages:</strong> 
+        {{range $i, $skill := .Requirements.TechnicalSkills.ProgrammingLanguages}}{{if $i}}, {{end}}{{$skill.Name}}{{end}}
+        </p>
+    </div>
+    {{end}}
+    
+    {{if .Compensation.Benefits}}
+    <div class="detail-section">
+        <h3>🎁 Benefits</h3>
+        <ul>
+        {{range .Compensation.Benefits}}
+            <li>{{.}}</li>
+        {{end}}
+        </ul>
+    </div>
+    {{end}}
+    
+    <div class="detail-section">
+        <h3>🔗 Source</h3>
+        <a href="{{.SourceURL}}" target="_blank">View Original Posting</a>
+    </div>
+</div>
+{{end}}
