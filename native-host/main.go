@@ -15,7 +15,15 @@ import (
 )
 
 type Message struct {
-	Text string `json:"text"`
+	Text     string   `json:"text"`
+	Settings Settings `json:"settings"`
+}
+
+type Settings struct {
+	Provider        string `json:"provider"`
+	OllamaModel     string `json:"ollamaModel"`
+	PerplexityKey   string `json:"perplexityKey"`
+	PerplexityModel string `json:"perplexityModel"`
 }
 
 type Response struct {
@@ -29,11 +37,31 @@ type OllamaRequest struct {
 	Model  string `json:"model"`
 	Prompt string `json:"prompt"`
 	Stream bool   `json:"stream"`
+	Format string `json:"format"`
 }
 
 type OllamaResponse struct {
 	Response string `json:"response"`
 	Done     bool   `json:"done"`
+}
+
+// Perplexity API types
+type PerplexityRequest struct {
+	Model    string              `json:"model"`
+	Messages []PerplexityMessage `json:"messages"`
+}
+
+type PerplexityMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type PerplexityResponse struct {
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
 }
 
 // Structured job data
@@ -138,6 +166,7 @@ func main() {
 	}
 
 	log.Printf("Received %d bytes of text", len(message.Text))
+	log.Printf("Provider: %s", message.Settings.Provider)
 
 	outputDir := filepath.Join(homeDir, "Downloads", "extracted_jobs")
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
@@ -157,11 +186,18 @@ func main() {
 	}
 	log.Printf("Saved raw text to %s", rawPath)
 
-	// Extract structured data using Ollama
-	log.Println("Calling Ollama for structured extraction...")
-	structuredData, err := extractJobData(message.Text)
+	// Extract structured data using configured AI
+	log.Printf("Calling %s for structured extraction...", message.Settings.Provider)
+
+	var structuredData *JobPosting
+	if message.Settings.Provider == "perplexity" {
+		structuredData, err = extractJobDataPerplexity(message.Text, message.Settings)
+	} else {
+		structuredData, err = extractJobDataOllama(message.Text, message.Settings)
+	}
+
 	if err != nil {
-		log.Printf("Error extracting with Ollama: %v", err)
+		log.Printf("Error extracting with %s: %v", message.Settings.Provider, err)
 		sendMessage(Response{Status: "error", Filename: rawPath})
 		return
 	}
@@ -192,17 +228,134 @@ func main() {
 	})
 }
 
-func extractJobData(jobText string) (*JobPosting, error) {
-	// Extract source URL from the text
+func extractJobDataOllama(jobText string, settings Settings) (*JobPosting, error) {
 	sourceURL := extractURL(jobText)
+	prompt := buildPrompt(jobText, sourceURL)
 
-	prompt := fmt.Sprintf(`Extract job posting information into JSON. Be extremely precise - only extract what is EXPLICITLY stated.
+	model := settings.OllamaModel
+	if model == "" {
+		model = "qwen2.5:7b"
+	}
+
+	reqBody := OllamaRequest{
+		Model:  model,
+		Prompt: prompt,
+		Stream: false,
+		Format: "json",
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	resp, err := http.Post("http://localhost:11434/api/generate", "application/json", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("call ollama: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	var ollamaResp OllamaResponse
+	if err := json.Unmarshal(body, &ollamaResp); err != nil {
+		return nil, fmt.Errorf("parse ollama response: %w", err)
+	}
+
+	log.Printf("Ollama response length: %d bytes", len(ollamaResp.Response))
+
+	jsonStr := cleanJSONResponse(ollamaResp.Response)
+
+	var jobPosting JobPosting
+	if err := json.Unmarshal([]byte(jsonStr), &jobPosting); err != nil {
+		log.Printf("Failed to parse JSON. Response was: %s", jsonStr)
+		return nil, fmt.Errorf("parse job data: %w", err)
+	}
+
+	return &jobPosting, nil
+}
+
+func extractJobDataPerplexity(jobText string, settings Settings) (*JobPosting, error) {
+	sourceURL := extractURL(jobText)
+	prompt := buildPrompt(jobText, sourceURL)
+
+	model := settings.PerplexityModel
+	if model == "" {
+		model = "sonar-pro"
+	}
+
+	reqBody := PerplexityRequest{
+		Model: model,
+		Messages: []PerplexityMessage{
+			{
+				Role:    "user",
+				Content: prompt,
+			},
+		},
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", "https://api.perplexity.ai/chat/completions", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+settings.PerplexityKey)
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("call perplexity: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("perplexity returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var perplexityResp PerplexityResponse
+	if err := json.NewDecoder(resp.Body).Decode(&perplexityResp); err != nil {
+		return nil, fmt.Errorf("parse perplexity response: %w", err)
+	}
+
+	if len(perplexityResp.Choices) == 0 {
+		return nil, fmt.Errorf("no response from perplexity")
+	}
+
+	log.Printf("Perplexity response length: %d bytes", len(perplexityResp.Choices[0].Message.Content))
+
+	jsonStr := cleanJSONResponse(perplexityResp.Choices[0].Message.Content)
+
+	var jobPosting JobPosting
+	if err := json.Unmarshal([]byte(jsonStr), &jobPosting); err != nil {
+		log.Printf("Failed to parse JSON. Response was: %s", jsonStr)
+		return nil, fmt.Errorf("parse job data: %w", err)
+	}
+
+	return &jobPosting, nil
+}
+
+func buildPrompt(jobText string, sourceURL string) string {
+	return fmt.Sprintf(`Extract job posting information into JSON. Be extremely precise - only extract what is EXPLICITLY stated.
 
 Job Posting:
 %s
 
 Key instructions:
-1. years_of_experience: ONLY if posting says "5+ years", "3-5 years", etc. This posting does NOT state required years. Use empty string "".
+1. years_of_experience: ONLY if posting says "5+ years", "3-5 years", etc. Use empty string "" if not stated.
 2. job_type: "Full-time", "Part-time", "Contract", or "Internship" (work schedule, not location)
 3. workplace_type: "Remote", "Hybrid", or "On-site" (location flexibility)
 4. soft_skills: Use SHORT keywords only. Examples: "Communication", "Problem-solving", "Leadership", "Adaptability"
@@ -264,56 +417,6 @@ Return this JSON structure:
 }
 
 CRITICAL: Do NOT infer years of experience. Do NOT copy full requirement sentences into soft_skills. Return ONLY JSON.`, jobText, time.Now().Format("2006-01-02T15:04:05Z07:00"), sourceURL)
-
-	reqBody := struct {
-		Model  string `json:"model"`
-		Prompt string `json:"prompt"`
-		Stream bool   `json:"stream"`
-		Format string `json:"format"`
-	}{
-		Model:  "qwen2.5:7b",
-		Prompt: prompt,
-		Stream: false,
-		Format: "json",
-	}
-
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
-	}
-
-	resp, err := http.Post("http://localhost:11434/api/generate", "application/json", bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return nil, fmt.Errorf("call ollama: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-
-	var ollamaResp OllamaResponse
-	if err := json.Unmarshal(body, &ollamaResp); err != nil {
-		return nil, fmt.Errorf("parse ollama response: %w", err)
-	}
-
-	log.Printf("Ollama response length: %d bytes", len(ollamaResp.Response))
-
-	// Clean the response (remove markdown code blocks if present)
-	jsonStr := cleanJSONResponse(ollamaResp.Response)
-
-	var jobPosting JobPosting
-	if err := json.Unmarshal([]byte(jsonStr), &jobPosting); err != nil {
-		log.Printf("Failed to parse JSON. Response was: %s", jsonStr)
-		return nil, fmt.Errorf("parse job data: %w", err)
-	}
-
-	return &jobPosting, nil
 }
 
 func cleanJSONResponse(response string) string {

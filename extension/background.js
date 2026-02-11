@@ -293,25 +293,42 @@ function combineAndSend() {
 
 // ========== NATIVE HOST ==========
 
-function sendToHost(text) {
+// In the sendToHost function, update to use browser.storage
+async function sendToHost(text) {
+  // Get user settings - Firefox compatibility
+  const storage = typeof browser !== 'undefined' ? browser.storage : chrome.storage;
+  
+  const settings = await storage.sync.get({
+    provider: 'ollama',
+    ollamaModel: 'qwen2.5:7b',
+    perplexityKey: '',
+    perplexityModel: 'sonar-pro'
+  });
+  
   try {
     if (!port) {
-      port = chrome.runtime.connectNative('com.textextractor.host');
+      const runtime = typeof browser !== 'undefined' ? browser.runtime : chrome.runtime;
+      port = runtime.connectNative('com.textextractor.host');
       
       port.onMessage.addListener((msg) => {
         console.log("✓ Host response:", msg);
       });
       
       port.onDisconnect.addListener(() => {
-        if (chrome.runtime.lastError) {
-          console.error("✗", chrome.runtime.lastError.message);
+        const lastError = typeof browser !== 'undefined' ? browser.runtime.lastError : chrome.runtime.lastError;
+        if (lastError) {
+          console.error("✗", lastError.message);
         }
         port = null;
       });
     }
     
-    port.postMessage({ text: text });
-    console.log("✓ Sent to host");
+    // Send both text and settings
+    port.postMessage({ 
+      text: text,
+      settings: settings
+    });
+    console.log("✓ Sent to host with settings:", settings.provider);
   } catch (err) {
     console.error("✗ Host error:", err);
   }

@@ -1,6 +1,9 @@
 // Load saved settings
 document.addEventListener('DOMContentLoaded', async () => {
-  const settings = await chrome.storage.sync.get({
+  // Use browser.storage instead of chrome.storage for Firefox
+  const storage = typeof browser !== 'undefined' ? browser.storage : chrome.storage;
+  
+  const settings = await storage.sync.get({
     provider: 'ollama',
     ollamaModel: 'qwen2.5:7b',
     perplexityKey: '',
@@ -49,7 +52,9 @@ document.getElementById('save').addEventListener('click', async () => {
   }
   
   try {
-    await chrome.storage.sync.set(settings);
+    // Use browser.storage for Firefox compatibility
+    const storage = typeof browser !== 'undefined' ? browser.storage : chrome.storage;
+    await storage.sync.set(settings);
     showStatus('Settings saved successfully!', 'success');
   } catch (err) {
     showStatus('Error saving settings: ' + err.message, 'error');

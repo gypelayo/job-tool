@@ -6,7 +6,8 @@
     "activeTab",
     "nativeMessaging",
     "scripting",
-    "webNavigation"
+    "webNavigation",
+    "storage"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -17,15 +18,7 @@
   "action": {
     "default_title": "Extract Text"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "all_frames": true,
-      "run_at": "document_end",
-      "match_about_blank": false
-    }
-  ],
+  "options_page": "options.html",
   "browser_specific_settings": {
     "gecko": {
       "id": "text-extractor@example.com"
