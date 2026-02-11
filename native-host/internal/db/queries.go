@@ -11,7 +11,11 @@ type JobSummary struct {
 	JobTitle      string
 	CompanyName   string
 	Location      string
+	JobType       string
 	WorkplaceType string
+	Level         string
+	Department    string
+	SalaryRange   string
 	Status        string
 	ExtractedAt   string
 	SourceURL     string
@@ -19,12 +23,24 @@ type JobSummary struct {
 
 func (db *DB) ListJobs(limit, offset int, status string) ([]JobSummary, error) {
 	query := `
-		SELECT id, job_title, company_name, location, workplace_type, status, extracted_at, source_url
-		FROM jobs
-		WHERE ($1 = '' OR status = $1)
-		ORDER BY extracted_at DESC
-		LIMIT $2 OFFSET $3
-	`
+        SELECT 
+            id, 
+            job_title, 
+            company_name, 
+            location, 
+            json_extract(raw_json, '$.metadata.job_type') as job_type,
+            workplace_type, 
+            json_extract(raw_json, '$.metadata.level[0]') as level,
+            json_extract(raw_json, '$.metadata.department') as department,
+            json_extract(raw_json, '$.compensation.salary_range') as salary_range,
+            status, 
+            extracted_at, 
+            source_url
+        FROM jobs
+        WHERE ($1 = '' OR status = $1)
+        ORDER BY extracted_at DESC
+        LIMIT $2 OFFSET $3
+    `
 
 	rows, err := db.Query(query, status, limit, offset)
 	if err != nil {
@@ -35,13 +51,22 @@ func (db *DB) ListJobs(limit, offset int, status string) ([]JobSummary, error) {
 	var jobs []JobSummary
 	for rows.Next() {
 		var job JobSummary
+		var jobType, level, department, salaryRange sql.NullString
+
 		err := rows.Scan(
 			&job.ID, &job.JobTitle, &job.CompanyName, &job.Location,
-			&job.WorkplaceType, &job.Status, &job.ExtractedAt, &job.SourceURL,
+			&jobType, &job.WorkplaceType, &level, &department, &salaryRange,
+			&job.Status, &job.ExtractedAt, &job.SourceURL,
 		)
 		if err != nil {
 			return nil, err
 		}
+
+		job.JobType = jobType.String
+		job.Level = level.String
+		job.Department = department.String
+		job.SalaryRange = salaryRange.String
+
 		jobs = append(jobs, job)
 	}
 
@@ -51,7 +76,9 @@ func (db *DB) ListJobs(limit, offset int, status string) ([]JobSummary, error) {
 func (db *DB) GetJobByID(id int64) (*models.JobPosting, error) {
 	query := `SELECT raw_json, status, notes, rating FROM jobs WHERE id = $1`
 
-	var rawJSON, status, notes string
+	var rawJSON string
+	var status sql.NullString
+	var notes sql.NullString
 	var rating sql.NullInt64
 
 	err := db.QueryRow(query, id).Scan(&rawJSON, &status, &notes, &rating)
@@ -63,9 +90,6 @@ func (db *DB) GetJobByID(id int64) (*models.JobPosting, error) {
 	if err := json.Unmarshal([]byte(rawJSON), &job); err != nil {
 		return nil, err
 	}
-
-	// Add database-only fields that aren't in raw_json
-	// These would need to be added to models.JobPosting if you want them
 
 	return &job, nil
 }
