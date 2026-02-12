@@ -9,7 +9,23 @@ services:
       - metabase-data:/metabase-data
     environment:
       MB_DB_FILE: /metabase-data/metabase.db
+      MB_SETUP_TOKEN: my-setup-token-12345
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  metabase-setup:
+    build:
+      context: .
+      dockerfile: Dockerfile.setup
+    depends_on:
+      metabase:
+        condition: service_healthy
+    environment:
+      METABASE_URL: http://metabase:3000
 
 volumes:
   metabase-data:
