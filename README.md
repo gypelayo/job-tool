@@ -179,9 +179,9 @@ Edit `docker-compose.yml` to customize:
 ## 🛠️ Development
 
 ### Running Tests
-
+```
 cd native-host && go test ./...
-
+```
 ### Debugging
 
 Test the native host directly by piping JSON to it or check browser console for logs.
