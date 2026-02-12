@@ -27,7 +27,7 @@ Browser Extension (background.js) → Native Host (Go Binary) → Claude API + S
 
 ### 1. Clone the Repository
 
-git clone https://github.com/yourusername/job-tracker.git
+git clone https://github.com/gypelayo/job-tool
 cd job-tracker
 
 ### 2. Build the Native Host
