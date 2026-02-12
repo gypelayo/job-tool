@@ -24,25 +24,26 @@ type JobPosting struct {
 	RoleDetails     RoleDetails     `json:"role_details"`
 	Requirements    Requirements    `json:"requirements"`
 	Compensation    Compensation    `json:"compensation"`
-	ApplicationInfo ApplicationInfo `json:"application_info"`
+	WorkArrangement WorkArrangement `json:"work_arrangement"`
+	MarketSignals   MarketSignals   `json:"market_signals"`
 	ExtractedAt     string          `json:"extracted_at"`
 	SourceURL       string          `json:"source_url"`
 }
 
 type JobMetadata struct {
-	JobTitle      string   `json:"job_title"`
-	Department    string   `json:"department"`
-	Level         []string `json:"level"`
-	JobType       string   `json:"job_type"`
-	WorkplaceType string   `json:"workplace_type"`
+	JobTitle       string `json:"job_title"`
+	Department     string `json:"department"`
+	SeniorityLevel string `json:"seniority_level"` // Junior, Mid, Senior, Staff, Principal, Lead
+	JobFunction    string `json:"job_function"`    // Backend, Frontend, FullStack, DevOps, Data
 }
 
 type CompanyInfo struct {
-	CompanyName  string   `json:"company_name"`
-	Industry     []string `json:"industry"`
-	CompanySize  string   `json:"company_size"`
-	Location     string   `json:"location"`
-	RemotePolicy string   `json:"remote_policy"`
+	CompanyName     string `json:"company_name"`
+	Industry        string `json:"industry"` // Single value now
+	CompanySize     string `json:"company_size"`
+	LocationFull    string `json:"location_full"`
+	LocationCity    string `json:"location_city"`
+	LocationCountry string `json:"location_country"`
 }
 
 type RoleDetails struct {
@@ -52,40 +53,48 @@ type RoleDetails struct {
 }
 
 type Requirements struct {
-	YearsOfExperience string          `json:"years_of_experience"`
-	TechnicalSkills   TechnicalSkills `json:"technical_skills"`
-	SoftSkills        []string        `json:"soft_skills"`
-	Education         []string        `json:"education"`
-	Certifications    []string        `json:"certifications"`
-	NiceToHave        []string        `json:"nice_to_have"`
+	YearsExperienceMin     int             `json:"years_experience_min"`
+	YearsExperienceMax     int             `json:"years_experience_max"`
+	EducationLevel         string          `json:"education_level"`
+	RequiresSpecificDegree bool            `json:"requires_specific_degree"`
+	TechnicalSkills        TechnicalSkills `json:"technical_skills"`
+	SoftSkills             []string        `json:"soft_skills"`
+	NiceToHave             []string        `json:"nice_to_have"`
 }
 
 type TechnicalSkills struct {
-	ProgrammingLanguages []SkillDetail `json:"programming_languages"`
-	Frameworks           []SkillDetail `json:"frameworks"`
-	Databases            []SkillDetail `json:"databases"`
-	CloudPlatforms       []SkillDetail `json:"cloud_platforms"`
-	DevOpsTools          []SkillDetail `json:"devops_tools"`
-	Other                []SkillDetail `json:"other"`
-}
-
-type SkillDetail struct {
-	Name        string `json:"name"`
-	Level       string `json:"level"`
-	Description string `json:"description,omitempty"`
+	ProgrammingLanguages []string `json:"programming_languages"`
+	Frameworks           []string `json:"frameworks"`
+	Databases            []string `json:"databases"`
+	CloudPlatforms       []string `json:"cloud_platforms"`
+	DevOpsTools          []string `json:"devops_tools"`
+	Other                []string `json:"other"`
 }
 
 type Compensation struct {
-	SalaryRange    string   `json:"salary_range"`
-	Equity         string   `json:"equity"`
-	Benefits       []string `json:"benefits"`
-	BonusStructure string   `json:"bonus_structure"`
+	SalaryMin             int      `json:"salary_min"`
+	SalaryMax             int      `json:"salary_max"`
+	SalaryCurrency        string   `json:"salary_currency"`
+	HasEquity             bool     `json:"has_equity"`
+	HasRemoteStipend      bool     `json:"has_remote_stipend"`
+	Benefits              []string `json:"benefits"`
+	OffersVisa            bool     `json:"offers_visa_sponsorship"`
+	OffersHealthInsurance bool     `json:"offers_health_insurance"`
+	OffersPTO             bool     `json:"offers_pto"`
+	OffersProfDev         bool     `json:"offers_professional_development"`
+	Offers401k            bool     `json:"offers_401k"`
 }
 
-type ApplicationInfo struct {
-	PostedDate          string   `json:"posted_date"`
-	ApplicationDeadline string   `json:"application_deadline"`
-	InterviewProcess    []string `json:"interview_process"`
-	TimeToHire          string   `json:"time_to_hire"`
-	ContactInfo         string   `json:"contact_info"`
+type WorkArrangement struct {
+	WorkplaceType        string `json:"workplace_type"` // Remote, Hybrid, On-site
+	JobType              string `json:"job_type"`       // Full-time, Part-time, Contract
+	IsRemoteFriendly     bool   `json:"is_remote_friendly"`
+	TimezoneRequirements string `json:"timezone_requirements"`
+}
+
+type MarketSignals struct {
+	UrgencyLevel       string `json:"urgency_level"` // Standard, Urgent, Immediate
+	InterviewRounds    int    `json:"interview_rounds"`
+	HasTakeHome        bool   `json:"has_take_home"`
+	HasPairProgramming bool   `json:"has_pair_programming"`
 }
