@@ -104,45 +104,6 @@ Once complete, open http://localhost:3000
    - Cloud platform demand
    - Common skill combinations
 
-## 📁 Project Structure
-```
-text-extractor/
-├── extension/
-│   ├── background.js          # Native messaging handler
-│   ├── content.js             # Content script
-│   ├── manifest.json          # Extension manifest
-│   ├── options.html           # Options page (API key config)
-│   └── options.js             # Options logic
-└── native-host/
-    ├── cmd/
-    │   ├── metabase-setup/
-    │   │   └── main.go        # Metabase auto-setup
-    │   └── query/
-    │       └── main.go        # Query utilities
-    ├── internal/
-    │   ├── config/
-    │   │   └── config.go      # Configuration
-    │   ├── db/
-    │   │   ├── db.go          # Database operations
-    │   │   ├── queries.go     # SQL queries
-    │   │   └── schema.go      # Database schema
-    │   ├── extractor/
-    │   │   ├── ollama.go      # Ollama integration
-    │   │   ├── perplexity.go  # Perplexity integration
-    │   │   └── prompt.go      # AI prompts
-    │   ├── messaging/
-    │   │   └── native.go      # Native messaging
-    │   ├── models/
-    │   │   └── job.go         # Data models
-    │   └── utils/
-    │       └── text.go        # Text utilities
-    ├── com.textextractor.host.json  # Native messaging manifest
-    ├── docker-compose.yml     # Metabase setup
-    ├── Dockerfile.setup       # Metabase auto-config
-    ├── extractor.log          # Application logs
-    ├── go.mod
-    └── go.sum
-```
 ## 🗄️ Database Schema
 
 **Jobs Table:**
