@@ -105,7 +105,7 @@ Once complete, open http://localhost:3000
    - Common skill combinations
 
 ## 📁 Project Structure
-
+```
 text-extractor/
 ├── extension/
 │   ├── background.js          # Native messaging handler
@@ -142,7 +142,7 @@ text-extractor/
     ├── extractor.log          # Application logs
     ├── go.mod
     └── go.sum
-
+```
 ## 🗄️ Database Schema
 
 **Jobs Table:**
