@@ -178,6 +178,9 @@ Edit `cmd/metabase-setup/main.go` and add new cards to the slice, then rebuild w
 - Verify database has data with sqlite3 queries
 - Check that database path in docker-compose.yml matches actual location
 
+## Next step
+Extension app to replace metabase
+
 ## 🤝 Contributing
 
 1. Fork the repository
