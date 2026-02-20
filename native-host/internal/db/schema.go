@@ -85,6 +85,7 @@ CREATE INDEX IF NOT EXISTS idx_workplace_type ON jobs(workplace_type);
 CREATE INDEX IF NOT EXISTS idx_seniority ON jobs(seniority_level);
 CREATE INDEX IF NOT EXISTS idx_is_remote ON jobs(is_remote_friendly);
 CREATE INDEX IF NOT EXISTS idx_extracted_at ON jobs(extracted_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_job_skills_name ON job_skills(skill_name);
 CREATE INDEX IF NOT EXISTS idx_job_skills_category ON job_skills(skill_category);
 `

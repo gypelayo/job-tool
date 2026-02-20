@@ -1,6 +1,7 @@
 package messaging
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -43,5 +44,46 @@ func SendResponse(response models.Response) error {
 		return fmt.Errorf("write message: %w", err)
 	}
 
+	return nil
+}
+
+// ReadAPIRequest reads a length-prefixed JSON APIRequest from reader.
+func ReadAPIRequest(reader io.Reader) (*APIRequest, error) {
+	var length uint32
+	if err := binary.Read(reader, binary.LittleEndian, &length); err != nil {
+		return nil, err
+	}
+
+	msgBytes := make([]byte, length)
+	if _, err := io.ReadFull(reader, msgBytes); err != nil {
+		return nil, err
+	}
+
+	var req APIRequest
+	if err := json.Unmarshal(msgBytes, &req); err != nil {
+		return nil, fmt.Errorf("unmarshal api request: %w", err)
+	}
+
+	return &req, nil
+}
+
+// SendAPIResponse writes a length-prefixed JSON APIResponse to stdout.
+func SendAPIResponse(resp APIResponse) error {
+	data, err := json.Marshal(resp)
+	if err != nil {
+		return fmt.Errorf("marshal api response: %w", err)
+	}
+
+	length := uint32(len(data))
+	buf := &bytes.Buffer{}
+	if err := binary.Write(buf, binary.LittleEndian, length); err != nil {
+		return fmt.Errorf("write length: %w", err)
+	}
+	if _, err := buf.Write(data); err != nil {
+		return fmt.Errorf("write data: %w", err)
+	}
+	if _, err := os.Stdout.Write(buf.Bytes()); err != nil {
+		return fmt.Errorf("write to stdout: %w", err)
+	}
 	return nil
 }

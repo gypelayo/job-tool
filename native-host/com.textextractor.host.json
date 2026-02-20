@@ -1,7 +1,0 @@
-{
-  "name": "com.textextractor.host",
-  "description": "Text Extractor Native Host",
-  "path": "/home/guilherme/Projects/text-extractor/native-host/textextractor",
-  "type": "stdio",
-  "allowed_extensions": ["text-extractor@example.com"]
-}

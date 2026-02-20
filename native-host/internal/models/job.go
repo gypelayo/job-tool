@@ -10,6 +10,7 @@ type Settings struct {
 	OllamaModel     string `json:"ollamaModel"`
 	PerplexityKey   string `json:"perplexityKey"`
 	PerplexityModel string `json:"perplexityModel"`
+	SourceURL       string `json:"sourceUrl"` // NEW
 }
 
 type Response struct {

@@ -2,25 +2,27 @@ let port = null;
 let frameData = [];
 let extractionTimer = null;
 
-chrome.action.onClicked.addListener(async (tab) => {
-  console.log("=== Extracting from:", tab.url);
-  
+// In MV2 + Firefox, there is no chrome.action.
+// If you want click-to-extract on icon click, use browserAction:
+chrome.browserAction.onClicked.addListener(async (tab) => {
+  console.log('=== Extracting from:', tab.url);
+
   const jobInfo = extractGreenhouseInfo(tab.url);
-  
+
   if (jobInfo) {
-    console.log("Greenhouse job detected:", jobInfo);
+    console.log('Greenhouse job detected:', jobInfo);
     await handleGreenhouseJob(tab, jobInfo);
   } else if (isWellfound(tab.url)) {
-    console.log("Wellfound job detected");
+    console.log('Wellfound job detected');
     await handleWellfoundJob(tab);
   } else if (isRemoteRocketship(tab.url)) {
-    console.log("Remote Rocketship job detected");
+    console.log('Remote Rocketship job detected');
     await handleRemoteRocketshipJob(tab);
   } else if (isLinkedIn(tab.url)) {
-    console.log("LinkedIn job detected");
+    console.log('LinkedIn job detected');
     await handleLinkedInJob(tab);
   } else {
-    console.log("Generic site - using basic scraping");
+    console.log('Generic site - using basic scraping');
     await handleGenericScraping(tab);
   }
 });
@@ -33,28 +35,28 @@ async function handleGreenhouseJob(tab, jobInfo) {
     if (jobData) {
       sendToHost(jobData);
     } else {
-      console.error("API failed");
+      console.error('API failed');
     }
   } else if (jobInfo.jobId) {
     chrome.webNavigation.getAllFrames({ tabId: tab.id }, async (frames) => {
       let boardToken = null;
-      
+
       for (const frame of frames) {
         const match = frame.url.match(/greenhouse\.io.*[?&]for=([^&]+)/);
         if (match) {
           boardToken = match[1];
-          console.log("Found board token:", boardToken);
+          console.log('Found board token:', boardToken);
           break;
         }
       }
-      
+
       if (boardToken) {
         const jobData = await fetchGreenhouseJob(boardToken, jobInfo.jobId);
         if (jobData) {
           sendToHost(jobData);
         }
       } else {
-        console.error("No board token found");
+        console.error('No board token found');
       }
     });
   }
@@ -63,25 +65,25 @@ async function handleGreenhouseJob(tab, jobInfo) {
 function extractGreenhouseInfo(url) {
   try {
     const urlObj = new URL(url);
-    
-    const directMatch = url.match(/greenhouse\.io\/([^\/]+)\/jobs\/(\d+)/);
+
+    const directMatch = url.match(/greenhouse\.io\/([^/]+)\/jobs\/(\d+)/);
     if (directMatch) {
       return {
         boardToken: directMatch[1],
         jobId: directMatch[2],
-        type: 'direct'
+        type: 'direct',
       };
     }
-    
+
     const jobId = urlObj.searchParams.get('gh_jid');
     if (jobId) {
       return {
         boardToken: null,
         jobId: jobId,
-        type: 'embedded'
+        type: 'embedded',
       };
     }
-    
+
     return null;
   } catch (e) {
     return null;
@@ -90,27 +92,27 @@ function extractGreenhouseInfo(url) {
 
 async function fetchGreenhouseJob(boardToken, jobId) {
   const url = `https://boards-api.greenhouse.io/v1/boards/${boardToken}/jobs/${jobId}`;
-  console.log("Fetching:", url);
-  
+  console.log('Fetching:', url);
+
   try {
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`API returned ${response.status}`);
     }
-    
+
     const job = await response.json();
-    console.log("✓ Got job:", job.title);
-    
+    console.log('✓ Got job:', job.title);
+
     const parser = new DOMParser();
     const doc = parser.parseFromString(job.content, 'text/html');
     const textContent = doc.body.textContent;
-    
+
     const formatted = `
 JOB TITLE: ${job.title}
 
 LOCATION: ${job.location?.name || 'Not specified'}
 
-DEPARTMENT: ${job.departments?.map(d => d.name).join(', ') || 'Not specified'}
+DEPARTMENT: ${job.departments?.map((d) => d.name).join(', ') || 'Not specified'}
 
 DESCRIPTION:
 ${textContent}
@@ -119,12 +121,11 @@ URL: ${job.absolute_url}
 UPDATED: ${job.updated_at}
 SOURCE: Greenhouse API
 `;
-    
-    console.log("Extracted", formatted.length, "chars");
+
+    console.log('Extracted', formatted.length, 'chars');
     return formatted;
-    
   } catch (error) {
-    console.error("API error:", error);
+    console.error('API error:', error);
     return null;
   }
 }
@@ -138,28 +139,29 @@ function isWellfound(url) {
 async function handleWellfoundJob(tab) {
   frameData = [];
   clearTimeout(extractionTimer);
-  
+
   try {
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ['content.js']
+    // MV2 / Firefox: use tabs.executeScript to inject content.js
+    chrome.tabs.executeScript(tab.id, { file: 'content.js' }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('Injection failed:', chrome.runtime.lastError.message);
+        return;
+      }
+      console.log('Content script injected');
+
+      setTimeout(() => {
+        chrome.tabs.sendMessage(tab.id, { action: 'extractWellfound' }).catch((err) => {
+          console.error('Message failed:', err);
+        });
+      }, 500);
+
+      extractionTimer = setTimeout(() => {
+        console.log('Timeout - collected', frameData.length, 'responses');
+        combineAndSend();
+      }, 15000);
     });
-    
-    console.log("Content script injected");
-    
-    setTimeout(() => {
-      chrome.tabs.sendMessage(tab.id, { action: "extractWellfound" }).catch(err => {
-        console.error("Message failed:", err);
-      });
-    }, 500);
-    
-    extractionTimer = setTimeout(() => {
-      console.log("Timeout - collected", frameData.length, "responses");
-      combineAndSend();
-    }, 15000);
-    
   } catch (err) {
-    console.error("Injection failed:", err);
+    console.error('Injection failed:', err);
   }
 }
 
@@ -172,28 +174,28 @@ function isRemoteRocketship(url) {
 async function handleRemoteRocketshipJob(tab) {
   frameData = [];
   clearTimeout(extractionTimer);
-  
+
   try {
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ['content.js']
+    chrome.tabs.executeScript(tab.id, { file: 'content.js' }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('Injection failed:', chrome.runtime.lastError.message);
+        return;
+      }
+      console.log('Content script injected');
+
+      setTimeout(() => {
+        chrome.tabs.sendMessage(tab.id, { action: 'extractRemoteRocketship' }).catch((err) => {
+          console.error('Message failed:', err);
+        });
+      }, 500);
+
+      extractionTimer = setTimeout(() => {
+        console.log('Timeout - collected', frameData.length, 'responses');
+        combineAndSend();
+      }, 15000);
     });
-    
-    console.log("Content script injected");
-    
-    setTimeout(() => {
-      chrome.tabs.sendMessage(tab.id, { action: "extractRemoteRocketship" }).catch(err => {
-        console.error("Message failed:", err);
-      });
-    }, 500);
-    
-    extractionTimer = setTimeout(() => {
-      console.log("Timeout - collected", frameData.length, "responses");
-      combineAndSend();
-    }, 15000);
-    
   } catch (err) {
-    console.error("Injection failed:", err);
+    console.error('Injection failed:', err);
   }
 }
 
@@ -206,28 +208,28 @@ function isLinkedIn(url) {
 async function handleLinkedInJob(tab) {
   frameData = [];
   clearTimeout(extractionTimer);
-  
+
   try {
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ['content.js']
+    chrome.tabs.executeScript(tab.id, { file: 'content.js' }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('Injection failed:', chrome.runtime.lastError.message);
+        return;
+      }
+      console.log('Content script injected');
+
+      setTimeout(() => {
+        chrome.tabs.sendMessage(tab.id, { action: 'extractLinkedIn' }).catch((err) => {
+          console.error('Message failed:', err);
+        });
+      }, 500);
+
+      extractionTimer = setTimeout(() => {
+        console.log('Timeout - collected', frameData.length, 'responses');
+        combineAndSend();
+      }, 15000);
     });
-    
-    console.log("Content script injected");
-    
-    setTimeout(() => {
-      chrome.tabs.sendMessage(tab.id, { action: "extractLinkedIn" }).catch(err => {
-        console.error("Message failed:", err);
-      });
-    }, 500);
-    
-    extractionTimer = setTimeout(() => {
-      console.log("Timeout - collected", frameData.length, "responses");
-      combineAndSend();
-    }, 15000);
-    
   } catch (err) {
-    console.error("Injection failed:", err);
+    console.error('Injection failed:', err);
   }
 }
 
@@ -236,100 +238,98 @@ async function handleLinkedInJob(tab) {
 async function handleGenericScraping(tab) {
   frameData = [];
   clearTimeout(extractionTimer);
-  
+
   try {
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ['content.js']
+    chrome.tabs.executeScript(tab.id, { file: 'content.js' }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('Injection failed:', chrome.runtime.lastError.message);
+        return;
+      }
+
+      setTimeout(() => {
+        chrome.tabs.sendMessage(tab.id, { action: 'extract' }).catch((err) => {
+          console.error('Message failed:', err);
+        });
+      }, 500);
+
+      extractionTimer = setTimeout(() => {
+        console.log('Timeout');
+        combineAndSend();
+      }, 20000);
     });
-    
-    setTimeout(() => {
-      chrome.tabs.sendMessage(tab.id, { action: "extract" }).catch(err => {
-        console.error("Message failed:", err);
-      });
-    }, 500);
-    
-    extractionTimer = setTimeout(() => {
-      console.log("Timeout");
-      combineAndSend();
-    }, 20000);
-    
   } catch (err) {
-    console.error("Injection failed:", err);
+    console.error('Injection failed:', err);
   }
 }
 
 // ========== MESSAGE HANDLING ==========
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "extractText") {
+  if (request.action === 'extractText') {
     const data = request.data;
-    
-    console.log("✓ Received:", data.contentLength, "chars");
-    
+
+    console.log('✓ Received:', data.contentLength, 'chars');
+
     frameData.push(data);
-    
+
     if (data.contentLength > 500) {
       clearTimeout(extractionTimer);
       setTimeout(() => combineAndSend(), 2000);
     }
-    
+
     sendResponse({ received: true });
   }
 });
 
 function combineAndSend() {
   if (frameData.length === 0) {
-    console.error("No data collected");
+    console.error('No data collected');
     return;
   }
-  
+
   const data = frameData[0];
-  console.log("Sending", data.contentLength, "chars");
+  console.log('Sending', data.contentLength, 'chars');
   sendToHost(data.text);
-  
+
   frameData = [];
 }
 
 // ========== NATIVE HOST ==========
 
-// In the sendToHost function, update to use browser.storage
 async function sendToHost(text) {
-  // Get user settings - Firefox compatibility
-  const storage = typeof browser !== 'undefined' ? browser.storage : chrome.storage;
-  
-  const settings = await storage.sync.get({
+  const storage = chrome.storage; // Firefox supports chrome.* alias
+
+  const defaults = {
     provider: 'ollama',
     ollamaModel: 'qwen2.5:7b',
     perplexityKey: '',
-    perplexityModel: 'sonar-pro'
-  });
-  
-  try {
-    if (!port) {
-      const runtime = typeof browser !== 'undefined' ? browser.runtime : chrome.runtime;
-      port = runtime.connectNative('com.textextractor.host');
-      
-      port.onMessage.addListener((msg) => {
-        console.log("✓ Host response:", msg);
+    perplexityModel: 'sonar-pro',
+  };
+
+  storage.sync.get(defaults, (settings) => {
+    try {
+      if (!port) {
+        port = chrome.runtime.connectNative('com.textextractor.host');
+
+        port.onMessage.addListener((msg) => {
+          console.log('✓ Host response:', msg);
+        });
+
+        port.onDisconnect.addListener(() => {
+          if (chrome.runtime.lastError) {
+            console.error('✗', chrome.runtime.lastError.message);
+          }
+          port = null;
+        });
+      }
+
+      port.postMessage({
+        text: text,
+        settings: settings,
       });
-      
-      port.onDisconnect.addListener(() => {
-        const lastError = typeof browser !== 'undefined' ? browser.runtime.lastError : chrome.runtime.lastError;
-        if (lastError) {
-          console.error("✗", lastError.message);
-        }
-        port = null;
-      });
+      console.log('✓ Sent to host with settings:', settings.provider);
+    } catch (err) {
+      console.error('✗ Host error:', err);
     }
-    
-    // Send both text and settings
-    port.postMessage({ 
-      text: text,
-      settings: settings
-    });
-    console.log("✓ Sent to host with settings:", settings.provider);
-  } catch (err) {
-    console.error("✗ Host error:", err);
-  }
+  });
 }

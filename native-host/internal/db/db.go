@@ -31,28 +31,39 @@ func (db *DB) SaveJob(job *models.JobPosting) (int64, error) {
 		return 0, fmt.Errorf("marshal job: %w", err)
 	}
 
+	summary := job.RoleDetails.Summary
+	keyResp := strings.Join(job.RoleDetails.KeyResponsibilities, "\n• ")
+	teamStructure := job.RoleDetails.TeamStructure
+	benefits := strings.Join(job.Compensation.Benefits, ", ")
+	softSkills := strings.Join(job.Requirements.SoftSkills, ", ")
+	niceToHave := strings.Join(job.Requirements.NiceToHave, "; ")
+
 	query := `
         INSERT INTO jobs (
-            source_url, extracted_at, job_title, company_name, company_size, industry,
-            location_full, location_city, location_country, seniority_level, department,
-            job_function, workplace_type, job_type, is_remote_friendly, timezone_requirements,
+            source_url, extracted_at,
+            job_title, company_name, company_size, industry,
+            location_full, location_city, location_country,
+            seniority_level, department, job_function,
+            workplace_type, job_type, is_remote_friendly, timezone_requirements,
             years_experience_min, years_experience_max, education_level, requires_specific_degree,
             salary_min, salary_max, salary_currency, has_equity, has_remote_stipend,
-            offers_visa_sponsorship, offers_health_insurance, offers_pto, 
+            offers_visa_sponsorship, offers_health_insurance, offers_pto,
             offers_professional_development, offers_401k,
             urgency_level, interview_rounds, has_take_home, has_pair_programming,
             summary, key_responsibilities, team_structure, benefits, soft_skills, nice_to_have,
-            raw_json, status
+            status, raw_json
         ) VALUES (
-            ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?,
-            ?, ?, ?, ?,
-            ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?,
-            ?, ?, ?, ?,
-            ?, ?, ?, ?, ?, ?,
-            ?, 'saved'
+            ?, ?,                             -- 1-2
+            ?, ?, ?, ?,                       -- 3-6
+            ?, ?, ?,                          -- 7-9
+            ?, ?, ?,                          -- 10-12
+            ?, ?, ?, ?,                       -- 13-16
+            ?, ?, ?, ?,                       -- 17-20
+            ?, ?, ?, ?, ?,                    -- 21-25
+            ?, ?, ?, ?, ?,                    -- 26-30
+            ?, ?, ?, ?,                       -- 31-34
+            ?, ?, ?, ?, ?, ?,                 -- 35-40
+            'saved', ?                        -- status literal, raw_json last
         )
         ON CONFLICT(source_url) DO UPDATE SET
             updated_at = CURRENT_TIMESTAMP,
@@ -73,26 +84,68 @@ func (db *DB) SaveJob(job *models.JobPosting) (int64, error) {
 	defer tx.Rollback()
 
 	result, err := tx.Exec(query,
-		job.SourceURL, job.ExtractedAt, job.Metadata.JobTitle, job.CompanyInfo.CompanyName,
-		job.CompanyInfo.CompanySize, job.CompanyInfo.Industry,
-		job.CompanyInfo.LocationFull, job.CompanyInfo.LocationCity, job.CompanyInfo.LocationCountry,
-		job.Metadata.SeniorityLevel, job.Metadata.Department, job.Metadata.JobFunction,
-		job.WorkArrangement.WorkplaceType, job.WorkArrangement.JobType,
-		job.WorkArrangement.IsRemoteFriendly, job.WorkArrangement.TimezoneRequirements,
-		job.Requirements.YearsExperienceMin, job.Requirements.YearsExperienceMax,
-		job.Requirements.EducationLevel, job.Requirements.RequiresSpecificDegree,
-		job.Compensation.SalaryMin, job.Compensation.SalaryMax, job.Compensation.SalaryCurrency,
-		job.Compensation.HasEquity, job.Compensation.HasRemoteStipend,
-		job.Compensation.OffersVisa, job.Compensation.OffersHealthInsurance,
-		job.Compensation.OffersPTO, job.Compensation.OffersProfDev, job.Compensation.Offers401k,
-		job.MarketSignals.UrgencyLevel, job.MarketSignals.InterviewRounds,
-		job.MarketSignals.HasTakeHome, job.MarketSignals.HasPairProgramming,
-		job.RoleDetails.Summary, strings.Join(job.RoleDetails.KeyResponsibilities, "\n• "),
-		job.RoleDetails.TeamStructure, strings.Join(job.Compensation.Benefits, ", "),
-		strings.Join(job.Requirements.SoftSkills, ", "), strings.Join(job.Requirements.NiceToHave, "; "),
+		// 1-2
+		job.SourceURL, job.ExtractedAt,
+
+		// 3-6
+		job.Metadata.JobTitle,
+		job.CompanyInfo.CompanyName,
+		job.CompanyInfo.CompanySize,
+		job.CompanyInfo.Industry,
+
+		// 7-9
+		job.CompanyInfo.LocationFull,
+		job.CompanyInfo.LocationCity,
+		job.CompanyInfo.LocationCountry,
+
+		// 10-12
+		job.Metadata.SeniorityLevel,
+		job.Metadata.Department,
+		job.Metadata.JobFunction,
+
+		// 13-16
+		job.WorkArrangement.WorkplaceType,
+		job.WorkArrangement.JobType,
+		job.WorkArrangement.IsRemoteFriendly,
+		job.WorkArrangement.TimezoneRequirements,
+
+		// 17-20
+		job.Requirements.YearsExperienceMin,
+		job.Requirements.YearsExperienceMax,
+		job.Requirements.EducationLevel,
+		job.Requirements.RequiresSpecificDegree,
+
+		// 21-25
+		job.Compensation.SalaryMin,
+		job.Compensation.SalaryMax,
+		job.Compensation.SalaryCurrency,
+		job.Compensation.HasEquity,
+		job.Compensation.HasRemoteStipend,
+
+		// 26-30 (all the boolean benefit flags)
+		job.Compensation.OffersVisa,            // offers_visa_sponsorship
+		job.Compensation.OffersHealthInsurance, // offers_health_insurance
+		job.Compensation.OffersPTO,             // offers_pto
+		job.Compensation.OffersProfDev,         // offers_professional_development
+		job.Compensation.Offers401k,            // offers_401k
+
+		// 31-34
+		job.MarketSignals.UrgencyLevel,
+		job.MarketSignals.InterviewRounds,
+		job.MarketSignals.HasTakeHome,
+		job.MarketSignals.HasPairProgramming,
+
+		// 35-40
+		summary,
+		keyResp,
+		teamStructure,
+		benefits,
+		softSkills,
+		niceToHave,
+
+		// raw_json (last)
 		string(rawJSON),
 	)
-
 	if err != nil {
 		return 0, fmt.Errorf("insert job: %w", err)
 	}
@@ -102,7 +155,6 @@ func (db *DB) SaveJob(job *models.JobPosting) (int64, error) {
 		return 0, fmt.Errorf("get last insert id: %w", err)
 	}
 
-	// Insert skills into normalized table
 	if err := db.saveSkills(tx, jobID, job.Requirements.TechnicalSkills); err != nil {
 		return 0, fmt.Errorf("save skills: %w", err)
 	}
@@ -115,7 +167,6 @@ func (db *DB) SaveJob(job *models.JobPosting) (int64, error) {
 }
 
 func (db *DB) saveSkills(tx *sql.Tx, jobID int64, skills models.TechnicalSkills) error {
-	// Delete existing skills for this job
 	_, err := tx.Exec("DELETE FROM job_skills WHERE job_id = ?", jobID)
 	if err != nil {
 		return err
@@ -126,11 +177,10 @@ func (db *DB) saveSkills(tx *sql.Tx, jobID int64, skills models.TechnicalSkills)
 			if name == "" {
 				continue
 			}
-			_, err := tx.Exec(
+			if _, err := tx.Exec(
 				"INSERT INTO job_skills (job_id, skill_name, skill_category, is_required) VALUES (?, ?, ?, ?)",
 				jobID, name, category, true,
-			)
-			if err != nil {
+			); err != nil {
 				return err
 			}
 		}

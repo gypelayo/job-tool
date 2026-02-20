@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>JobFlow Dashboard</title>
+  <link rel="stylesheet" href="dashboard.css" />
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar">
+      <div class="logo">JobFlow</div>
+      <nav>
+        <button class="nav-btn active" data-tab="jobs">Jobs</button>
+        <button class="nav-btn" data-tab="analytics">Analytics</button>
+        <button class="nav-btn" data-tab="settings">Settings</button>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <section id="tab-jobs" class="tab active">
+        <header class="tab-header">
+          <h1>Jobs</h1>
+          <div class="filters">
+            <input id="searchInput" type="text" placeholder="Search by title or company" />
+            <select id="statusFilter">
+              <option value="">All statuses</option>
+              <option value="saved">Saved</option>
+              <option value="applied">Applied</option>
+              <option value="interview">Interview</option>
+              <option value="offer">Offer</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+        </header>
+
+        <div id="jobsList" class="jobs-list">
+          <!-- Filled by dashboard.js -->
+        </div>
+
+        <div id="jobDetail" class="job-detail hidden">
+          <!-- Filled by dashboard.js -->
+        </div>
+      </section>
+
+      <section id="tab-analytics" class="tab">
+        <header class="tab-header">
+          <h1>Analytics</h1>
+        </header>
+        <div id="analyticsContent" class="analytics">
+          <!-- Charts populated by dashboard.js -->
+        </div>
+      </section>
+
+      <section id="tab-settings" class="tab">
+        <header class="tab-header">
+          <h1>Settings</h1>
+        </header>
+        <div class="settings">
+          <h2>Perplexity API</h2>
+          <label>
+            API Key
+            <input id="perplexityApiKey" type="password" placeholder="px_api_..." />
+          </label>
+          <button id="saveApiKeyBtn">Save</button>
+          <p id="apiKeyStatus" class="status-text"></p>
+
+          <h2>Native Helper</h2>
+          <p>
+            JobFlow Desktop must be installed on your Mac or Linux machine for extraction
+            to work.
+          </p>
+          <button id="testHostBtn">Test connection</button>
+          <p id="hostStatus" class="status-text"></p>
+
+          <p class="small">
+            Data is stored locally on your machine in a SQLite database managed by JobFlow
+            Desktop.
+          </p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

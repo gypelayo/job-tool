@@ -21,28 +21,29 @@ type JobSummary struct {
 	SourceURL     string
 }
 
+// ListJobs uses existing columns: location_full, job_type, workplace_type, etc.
 func (db *DB) ListJobs(limit, offset int, status string) ([]JobSummary, error) {
 	query := `
         SELECT 
             id, 
             job_title, 
             company_name, 
-            location, 
-            json_extract(raw_json, '$.metadata.job_type') as job_type,
+            location_full, 
+            job_type,
             workplace_type, 
-            json_extract(raw_json, '$.metadata.level[0]') as level,
-            json_extract(raw_json, '$.metadata.department') as department,
-            json_extract(raw_json, '$.compensation.salary_range') as salary_range,
+            seniority_level,
+            department,
+            salary_min || '-' || salary_max || ' ' || IFNULL(salary_currency, '') as salary_range,
             status, 
             extracted_at, 
             source_url
         FROM jobs
-        WHERE ($1 = '' OR status = $1)
+        WHERE (? = '' OR status = ?)
         ORDER BY extracted_at DESC
-        LIMIT $2 OFFSET $3
+        LIMIT ? OFFSET ?
     `
 
-	rows, err := db.Query(query, status, limit, offset)
+	rows, err := db.Query(query, status, status, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -51,77 +52,81 @@ func (db *DB) ListJobs(limit, offset int, status string) ([]JobSummary, error) {
 	var jobs []JobSummary
 	for rows.Next() {
 		var job JobSummary
-		var jobType, level, department, salaryRange sql.NullString
+		var salaryRange sql.NullString
 
-		err := rows.Scan(
-			&job.ID, &job.JobTitle, &job.CompanyName, &job.Location,
-			&jobType, &job.WorkplaceType, &level, &department, &salaryRange,
-			&job.Status, &job.ExtractedAt, &job.SourceURL,
-		)
-		if err != nil {
+		if err := rows.Scan(
+			&job.ID,
+			&job.JobTitle,
+			&job.CompanyName,
+			&job.Location,
+			&job.JobType,
+			&job.WorkplaceType,
+			&job.Level,
+			&job.Department,
+			&salaryRange,
+			&job.Status,
+			&job.ExtractedAt,
+			&job.SourceURL,
+		); err != nil {
 			return nil, err
 		}
 
-		job.JobType = jobType.String
-		job.Level = level.String
-		job.Department = department.String
 		job.SalaryRange = salaryRange.String
-
 		jobs = append(jobs, job)
 	}
 
 	return jobs, nil
 }
 
-func (db *DB) GetJobByID(id int64) (*models.JobPosting, error) {
-	query := `SELECT raw_json, status, notes, rating FROM jobs WHERE id = $1`
+func (db *DB) GetJobByID(id int64) (*models.JobPosting, string, string, int, error) {
+	query := `SELECT raw_json, status, notes, rating FROM jobs WHERE id = ?`
 
 	var rawJSON string
 	var status sql.NullString
 	var notes sql.NullString
 	var rating sql.NullInt64
 
-	err := db.QueryRow(query, id).Scan(&rawJSON, &status, &notes, &rating)
-	if err != nil {
-		return nil, err
+	if err := db.QueryRow(query, id).Scan(&rawJSON, &status, &notes, &rating); err != nil {
+		return nil, "", "", 0, err
 	}
 
 	var job models.JobPosting
 	if err := json.Unmarshal([]byte(rawJSON), &job); err != nil {
-		return nil, err
+		return nil, "", "", 0, err
 	}
 
-	return &job, nil
+	return &job, status.String, notes.String, int(rating.Int64), nil
 }
 
 func (db *DB) UpdateJobStatus(id int64, status string) error {
-	query := `UPDATE jobs SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
+	query := `UPDATE jobs SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
 	_, err := db.Exec(query, status, id)
 	return err
 }
 
 func (db *DB) UpdateJobNotes(id int64, notes string) error {
-	query := `UPDATE jobs SET notes = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
+	query := `UPDATE jobs SET notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
 	_, err := db.Exec(query, notes, id)
 	return err
 }
 
 func (db *DB) UpdateJobRating(id int64, rating int) error {
-	query := `UPDATE jobs SET rating = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
+	query := `UPDATE jobs SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
 	_, err := db.Exec(query, rating, id)
 	return err
 }
 
 func (db *DB) SearchJobs(search string) ([]JobSummary, error) {
 	query := `
-		SELECT id, job_title, company_name, location, workplace_type, status, extracted_at, source_url
+		SELECT id, job_title, company_name, location_full, workplace_type, status, extracted_at, source_url
 		FROM jobs
-		WHERE job_title LIKE $1 OR company_name LIKE $1 OR location LIKE $1
+		WHERE job_title LIKE ? OR company_name LIKE ? OR location_full LIKE ?
 		ORDER BY extracted_at DESC
 		LIMIT 50
 	`
 
-	rows, err := db.Query(query, "%"+search+"%")
+	like := "%" + search + "%"
+	rows, err := db.Query(query, like, like, like)
 	if err != nil {
 		return nil, err
 	}
@@ -130,11 +135,16 @@ func (db *DB) SearchJobs(search string) ([]JobSummary, error) {
 	var jobs []JobSummary
 	for rows.Next() {
 		var job JobSummary
-		err := rows.Scan(
-			&job.ID, &job.JobTitle, &job.CompanyName, &job.Location,
-			&job.WorkplaceType, &job.Status, &job.ExtractedAt, &job.SourceURL,
-		)
-		if err != nil {
+		if err := rows.Scan(
+			&job.ID,
+			&job.JobTitle,
+			&job.CompanyName,
+			&job.Location,
+			&job.WorkplaceType,
+			&job.Status,
+			&job.ExtractedAt,
+			&job.SourceURL,
+		); err != nil {
 			return nil, err
 		}
 		jobs = append(jobs, job)
@@ -156,8 +166,7 @@ func (db *DB) GetJobStats() (map[string]int, error) {
 	`
 
 	var total, saved, applied, interview, offer, rejected int
-	err := db.QueryRow(query).Scan(&total, &saved, &applied, &interview, &offer, &rejected)
-	if err != nil {
+	if err := db.QueryRow(query).Scan(&total, &saved, &applied, &interview, &offer, &rejected); err != nil {
 		return nil, err
 	}
 

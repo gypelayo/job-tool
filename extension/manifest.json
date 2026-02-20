@@ -1,27 +1,36 @@
 {
-  "manifest_version": 3,
-  "name": "Text Extractor",
-  "version": "1.0",
+  "manifest_version": 2,
+  "name": "JobFlow - AI Job Tracker",
+  "version": "0.1.0",
+  "description": "Extract job postings with AI and track your applications locally.",
   "permissions": [
     "activeTab",
     "nativeMessaging",
     "scripting",
     "webNavigation",
-    "storage"
-  ],
-  "host_permissions": [
+    "storage",
+    "tabs",
     "<all_urls>"
   ],
   "background": {
     "scripts": ["background.js"]
   },
-  "action": {
-    "default_title": "Extract Text"
+  "browser_action": {
+    "default_title": "JobFlow",
+    "default_popup": "popup.html"
   },
-  "options_page": "options.html",
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "browser_specific_settings": {
     "gecko": {
-      "id": "text-extractor@example.com"
+      "id": "jobflow@example.com"
     }
   }
 }

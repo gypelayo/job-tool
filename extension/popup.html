@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>JobFlow</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 10px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      width: 260px;
+    }
+    button {
+      width: 100%;
+      padding: 6px 8px;
+      margin-bottom: 6px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    #extractBtn {
+      background: #2563eb;
+      color: #fff;
+    }
+    #dashboardBtn {
+      background: #e5e7eb;
+      color: #111827;
+    }
+    #status {
+      font-size: 12px;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <button id="extractBtn">Extract job from this page</button>
+  <button id="dashboardBtn">Open dashboard</button>
+  <div id="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
