@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <title>JobFlow Dashboard</title>
   <link rel="stylesheet" href="dashboard.css" />
 </head>
+
 <body>
   <div id="app">
     <aside class="sidebar">
@@ -47,9 +49,50 @@
           <h1>Analytics</h1>
         </header>
         <div id="analyticsContent" class="analytics">
-          <!-- Charts populated by dashboard.js -->
+          <div id="analyticsSummary" class="analytics-status-summary"></div>
+
+          <div class="analytics-chart-block">
+            <h3>Programming languages</h3>
+            <canvas id="chartProgrammingLanguages"></canvas>
+          </div>
+
+          <div class="analytics-chart-block">
+            <h3>Frameworks</h3>
+            <canvas id="chartFrameworks"></canvas>
+          </div>
+
+          <div class="analytics-chart-block">
+            <h3>Databases</h3>
+            <canvas id="chartDatabases"></canvas>
+          </div>
+
+          <div class="analytics-chart-block">
+            <h3>Cloud platforms</h3>
+            <canvas id="chartCloudPlatforms"></canvas>
+          </div>
+
+          <div class="analytics-chart-block">
+            <h3>DevOps tools</h3>
+            <canvas id="chartDevopsTools"></canvas>
+          </div>
+
+          <div class="analytics-chart-block">
+            <h3>Other technical skills</h3>
+            <canvas id="chartOtherSkills"></canvas>
+          </div>
+
+          <div class="analytics-chart-block">
+            <h3>Top job titles</h3>
+            <canvas id="chartJobTitles"></canvas>
+          </div>
+
+          <div class="analytics-chart-block">
+            <h3>Skills by pipeline stage</h3>
+            <canvas id="chartSkillsByStatus"></canvas>
+          </div>
         </div>
       </section>
+
 
       <section id="tab-settings" class="tab">
         <header class="tab-header">
@@ -80,7 +123,8 @@
       </section>
     </main>
   </div>
-
+  <script src="vendor/chart.umd.js"></script>
   <script src="dashboard.js"></script>
 </body>
+
 </html>

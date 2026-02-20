@@ -225,8 +225,78 @@ func (db *DB) GetTopSkills(limit int) ([]SkillSummary, error) {
 	return res, nil
 }
 
+func (db *DB) GetSkillLocations(skill string, limit int) ([]struct {
+	Location string
+	Count    int
+}, error) {
+	query := `
+        SELECT 
+            COALESCE(j.location_city, j.location_full, 'Unknown') AS loc,
+            COUNT(*) AS cnt
+        FROM job_skills s
+        JOIN jobs j ON j.id = s.job_id
+        WHERE s.skill_name = ?
+        GROUP BY COALESCE(j.location_city, j.location_full, 'Unknown')
+        ORDER BY cnt DESC
+        LIMIT ?
+    `
+	rows, err := db.Query(query, skill, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var res []struct {
+		Location string
+		Count    int
+	}
+
+	for rows.Next() {
+		var loc string
+		var cnt int
+		if err := rows.Scan(&loc, &cnt); err != nil {
+			return nil, err
+		}
+		res = append(res, struct {
+			Location string
+			Count    int
+		}{Location: loc, Count: cnt})
+	}
+	return res, nil
+}
+
+// GetTopSkillsByCategory returns top skills per category.
+func (db *DB) GetTopSkillsByCategory(category string, limit int) ([]SkillSummary, error) {
+	query := `
+        SELECT 
+            skill_name,
+            skill_category,
+            COUNT(*) AS cnt
+        FROM job_skills
+        WHERE skill_category = ?
+        GROUP BY skill_name, skill_category
+        ORDER BY cnt DESC, skill_name ASC
+        LIMIT ?
+    `
+	rows, err := db.Query(query, category, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var res []SkillSummary
+	for rows.Next() {
+		var s SkillSummary
+		if err := rows.Scan(&s.SkillName, &s.SkillCategory, &s.Count); err != nil {
+			return nil, err
+		}
+		res = append(res, s)
+	}
+	return res, nil
+}
+
+// GetSkillsByStatus returns top skills per pipeline stage.
 func (db *DB) GetSkillsByStatus(limitPerStatus int) (map[string][]SkillSummary, error) {
-	// status -> top skills for jobs in that status
 	query := `
         SELECT 
             j.status,
@@ -267,42 +337,37 @@ func (db *DB) GetSkillsByStatus(limitPerStatus int) (map[string][]SkillSummary, 
 	return result, nil
 }
 
-func (db *DB) GetSkillLocations(skill string, limit int) ([]struct {
-	Location string
-	Count    int
-}, error) {
+// JobTitleSummary is used for job title frequency.
+type JobTitleSummary struct {
+	Title string
+	Count int
+}
+
+// GetTopJobTitles returns most frequent job titles.
+func (db *DB) GetTopJobTitles(limit int) ([]JobTitleSummary, error) {
 	query := `
         SELECT 
-            COALESCE(j.location_city, j.location_full, 'Unknown') AS loc,
+            job_title,
             COUNT(*) AS cnt
-        FROM job_skills s
-        JOIN jobs j ON j.id = s.job_id
-        WHERE s.skill_name = ?
-        GROUP BY COALESCE(j.location_city, j.location_full, 'Unknown')
-        ORDER BY cnt DESC
+        FROM jobs
+        WHERE job_title IS NOT NULL AND job_title != ''
+        GROUP BY job_title
+        ORDER BY cnt DESC, job_title ASC
         LIMIT ?
     `
-	rows, err := db.Query(query, skill, limit)
+	rows, err := db.Query(query, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var res []struct {
-		Location string
-		Count    int
-	}
-
+	var res []JobTitleSummary
 	for rows.Next() {
-		var loc string
-		var cnt int
-		if err := rows.Scan(&loc, &cnt); err != nil {
+		var jt JobTitleSummary
+		if err := rows.Scan(&jt.Title, &jt.Count); err != nil {
 			return nil, err
 		}
-		res = append(res, struct {
-			Location string
-			Count    int
-		}{Location: loc, Count: cnt})
+		res = append(res, jt)
 	}
 	return res, nil
 }

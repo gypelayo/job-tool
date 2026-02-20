@@ -198,8 +198,8 @@ nav {
 .analytics-status-summary {
   font-size: 13px;
   color: #374151;
+  margin-bottom: 12px;
 }
-
 .analytics-section h3 {
   margin: 0 0 8px 0;
   font-size: 14px;
@@ -229,7 +229,23 @@ nav {
   font-weight: 600;
   margin-bottom: 4px;
 }
+.analytics-chart-block {
+  margin-bottom: 20px;
+}
+.analytics-chart-block h3 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+}
 
+.analytics-chart-block canvas {
+  max-width: 100%;
+}
+
+/* Optional: highlight selected job card */
+.job-card.selected {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.4);
+}
 /* Settings */
 
 .settings {
@@ -286,7 +302,6 @@ nav {
 .job-detail-close-btn:hover {
   background: #f3f4f6;
 }
-
 .notes-save-btn {
   margin-top: 6px;
   padding: 4px 8px;
@@ -302,8 +317,41 @@ nav {
 }
 
 .job-actions button.job-delete-btn {
-  background: #000000;
+  background: #ffffff00;
 }
 .job-actions button.job-delete-btn:hover {
-  background: #2e2e2e;
+  background: #7c7c7c54;
+}
+
+
+.analytics-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.analytics-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.analytics-bar-label {
+  width: 160px;
+  font-size: 12px;
+  color: #374151;
+}
+
+.analytics-bar-outer {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  overflow: hidden;
+}
+
+.analytics-bar-inner {
+  height: 100%;
+  border-radius: 999px;
+  background: #2563eb;
 }

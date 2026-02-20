@@ -309,45 +309,36 @@ func handleAPIRequest(req messaging.APIRequest, database *db.DB) {
 			return
 		}
 
-		topSkills, err := database.GetTopSkills(15)
-		if err != nil {
-			_ = messaging.SendAPIResponse(messaging.APIResponse{OK: false, Error: err.Error()})
-			return
+		// Skill categories we care about
+		categories := []string{
+			"programming_language", // matches your DB
+			"database",
+			"cloud",
+			"devops",
+			"other",
 		}
 
-		skillsByStatus, err := database.GetSkillsByStatus(5)
-		if err != nil {
-			_ = messaging.SendAPIResponse(messaging.APIResponse{OK: false, Error: err.Error()})
-			return
-		}
-
-		// Optionally pick one “focus” skill: the most frequent one
-		focusSkill := ""
-		if len(topSkills) > 0 {
-			focusSkill = topSkills[0].SkillName
-		}
-
-		var focusSkillLocations []map[string]any
-		if focusSkill != "" {
-			locs, err := database.GetSkillLocations(focusSkill, 10)
-			if err == nil {
-				for _, l := range locs {
-					focusSkillLocations = append(focusSkillLocations, map[string]any{
-						"location": l.Location,
-						"count":    l.Count,
-					})
-				}
+		skillsByCategoryPayload := make(map[string][]map[string]any)
+		for _, cat := range categories {
+			list, err := database.GetTopSkillsByCategory(cat, 15)
+			if err != nil {
+				_ = messaging.SendAPIResponse(messaging.APIResponse{OK: false, Error: err.Error()})
+				return
 			}
+			arr := make([]map[string]any, 0, len(list))
+			for _, s := range list {
+				arr = append(arr, map[string]any{
+					"skill": s.SkillName,
+					"count": s.Count,
+				})
+			}
+			skillsByCategoryPayload[cat] = arr
 		}
 
-		// Convert SkillSummary slices to plain maps for JSON
-		topSkillsPayload := make([]map[string]any, 0, len(topSkills))
-		for _, s := range topSkills {
-			topSkillsPayload = append(topSkillsPayload, map[string]any{
-				"skill":    s.SkillName,
-				"category": s.SkillCategory,
-				"count":    s.Count,
-			})
+		skillsByStatus, err := database.GetSkillsByStatus(10)
+		if err != nil {
+			_ = messaging.SendAPIResponse(messaging.APIResponse{OK: false, Error: err.Error()})
+			return
 		}
 
 		skillsByStatusPayload := make(map[string][]map[string]any)
@@ -355,22 +346,33 @@ func handleAPIRequest(req messaging.APIRequest, database *db.DB) {
 			arr := make([]map[string]any, 0, len(list))
 			for _, s := range list {
 				arr = append(arr, map[string]any{
-					"skill":    s.SkillName,
-					"category": s.SkillCategory,
-					"count":    s.Count,
+					"skill": s.SkillName,
+					"count": s.Count,
 				})
 			}
 			skillsByStatusPayload[status] = arr
 		}
 
+		titles, err := database.GetTopJobTitles(15)
+		if err != nil {
+			_ = messaging.SendAPIResponse(messaging.APIResponse{OK: false, Error: err.Error()})
+			return
+		}
+		titlesPayload := make([]map[string]any, 0, len(titles))
+		for _, t := range titles {
+			titlesPayload = append(titlesPayload, map[string]any{
+				"title": t.Title,
+				"count": t.Count,
+			})
+		}
+
 		_ = messaging.SendAPIResponse(messaging.APIResponse{
 			OK: true,
 			Payload: map[string]any{
-				"statusStats":         statusStats,
-				"topSkills":           topSkillsPayload,
-				"skillsByStatus":      skillsByStatusPayload,
-				"focusSkill":          focusSkill,
-				"focusSkillLocations": focusSkillLocations,
+				"statusStats":      statusStats,
+				"skillsByCategory": skillsByCategoryPayload,
+				"skillsByStatus":   skillsByStatusPayload,
+				"topJobTitles":     titlesPayload,
 			},
 		})
 

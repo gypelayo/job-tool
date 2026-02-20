@@ -1,7 +1,7 @@
 {
   "name": "com.textextractor.host",
   "description": "JobFlow Native Host",
-  "path": "/home/guilherme/Projects/text-extractor/native-host/job-extractor",
+  "path": "/<absolute-path-to-this-repo>/job-extractor",
   "type": "stdio",
   "allowed_extensions": ["jobflow@example.com"]
 }

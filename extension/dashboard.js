@@ -24,7 +24,6 @@ navButtons.forEach((btn) => {
     navButtons.forEach((b) => b.classList.toggle('active', b === btn));
     tabs.forEach((t) => t.classList.toggle('active', t.id === `tab-${tab}`));
 
-    // Lazy-load analytics when switching to that tab
     if (tab === 'analytics') {
       loadAnalytics();
     }
@@ -38,6 +37,17 @@ const searchInputEl = document.getElementById('searchInput');
 const statusFilterEl = document.getElementById('statusFilter');
 
 let allJobs = [];
+let currentJobId = null;
+
+// Charts
+let chartProgrammingLanguages = null;
+let chartFrameworks = null;
+let chartDatabases = null;
+let chartCloudPlatforms = null;
+let chartDevopsTools = null;
+let chartOtherSkills = null;
+let chartJobTitles = null;
+let chartSkillsByStatus = null;
 
 // Render jobs list
 function renderJobs() {
@@ -64,6 +74,9 @@ function renderJobs() {
   filtered.forEach((job) => {
     const card = document.createElement('div');
     card.className = 'job-card';
+    if (job.id === currentJobId) {
+      card.classList.add('selected');
+    }
 
     const main = document.createElement('div');
     main.className = 'job-main';
@@ -97,12 +110,18 @@ function renderJobs() {
 
     const viewBtn = document.createElement('button');
     viewBtn.textContent = 'View';
-    viewBtn.addEventListener('click', () => openJobDetail(job.id));
+    viewBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openJobDetail(job.id);
+    });
 
     const deleteBtn = document.createElement('button');
     deleteBtn.textContent = '❌';
     deleteBtn.className = 'job-delete-btn';
-    deleteBtn.addEventListener('click', () => deleteJob(job.id));
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteJob(job.id, deleteBtn);
+    });
 
     actions.appendChild(statusSelect);
     actions.appendChild(viewBtn);
@@ -110,6 +129,12 @@ function renderJobs() {
 
     card.appendChild(main);
     card.appendChild(actions);
+
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.job-actions')) return;
+      openJobDetail(job.id);
+    });
+
     jobsListEl.appendChild(card);
   });
 }
@@ -136,18 +161,22 @@ async function updateJobStatus(jobId, status) {
   }
 }
 
-async function deleteJob(jobId) {
+async function deleteJob(jobId, buttonEl) {
   if (!confirm('Remove this job from your list?')) return;
   try {
+    if (buttonEl) buttonEl.disabled = true;
     await sendNativeMessage({ action: 'deleteJob', data: { id: jobId } });
-    // Remove from local array
     allJobs = allJobs.filter((j) => j.id !== jobId);
+    if (currentJobId === jobId) {
+      currentJobId = null;
+      jobDetailEl.classList.add('hidden');
+      jobDetailEl.innerHTML = '';
+    }
     renderJobs();
-    // If this job is currently open, hide detail
-    jobDetailEl.classList.add('hidden');
-    jobDetailEl.innerHTML = '';
   } catch (err) {
     console.error('Failed to delete job', err);
+  } finally {
+    if (buttonEl) buttonEl.disabled = false;
   }
 }
 
@@ -156,6 +185,9 @@ async function openJobDetail(jobId) {
     const resp = await sendNativeMessage({ action: 'getJob', data: { id: jobId } });
     const job = resp.job;
     if (!job) return;
+
+    currentJobId = jobId;
+    renderJobs();
 
     const extracted = job.extracted || {};
     const meta = extracted.metadata || {};
@@ -169,7 +201,7 @@ async function openJobDetail(jobId) {
     jobDetailEl.innerHTML = '';
     jobDetailEl.classList.remove('hidden');
 
-    // Header: title, subtitle
+    // Header
     const title = document.createElement('h2');
     title.textContent = meta.job_title || job.title || 'Untitled role';
 
@@ -178,13 +210,14 @@ async function openJobDetail(jobId) {
     subtitle.textContent = `${company.company_name || job.company || 'Unknown company'} · ${company.location_full || job.location || 'Location not set'
       }`;
 
-    // Close button
     const closeBtn = document.createElement('button');
     closeBtn.textContent = 'Close';
     closeBtn.className = 'job-detail-close-btn';
     closeBtn.addEventListener('click', () => {
+      currentJobId = null;
       jobDetailEl.classList.add('hidden');
       jobDetailEl.innerHTML = '';
+      renderJobs();
     });
 
     const leftHeader = document.createElement('div');
@@ -199,9 +232,6 @@ async function openJobDetail(jobId) {
     headerRow.appendChild(leftHeader);
     headerRow.appendChild(closeBtn);
 
-    console.log('job from host', job);
-    console.log('extracted.source_url', extracted.source_url);
-
     const link = document.createElement('a');
     const url = job.url || extracted.source_url || '#';
     link.href = url;
@@ -215,7 +245,7 @@ async function openJobDetail(jobId) {
     skills.innerHTML = `<strong>Skills:</strong> ${(job.skills || []).join(', ') || 'None extracted'
       }`;
 
-    // Role (from extracted metadata/role_details)
+    // Sections (role, company, etc.) – same as before
     const metaSection = document.createElement('div');
     metaSection.innerHTML = `
       <h3>Role</h3>
@@ -225,7 +255,6 @@ async function openJobDetail(jobId) {
       <p><strong>Function:</strong> ${meta.job_function || ''}</p>
     `;
 
-    // Company
     const companySection = document.createElement('div');
     companySection.innerHTML = `
       <h3>Company</h3>
@@ -235,7 +264,6 @@ async function openJobDetail(jobId) {
       <p><strong>Location:</strong> ${company.location_full || ''}</p>
     `;
 
-    // Role details
     const roleSection = document.createElement('div');
     const summaryHtml = (role.summary || '').replace(/\n/g, '<br>');
     const responsibilitiesHtml =
@@ -247,7 +275,6 @@ async function openJobDetail(jobId) {
       <p><strong>Team structure:</strong> ${role.team_structure || '—'}</p>
     `;
 
-    // Requirements
     const reqSection = document.createElement('div');
     const ts = reqs.technical_skills || {};
     const techLines = [
@@ -275,7 +302,6 @@ async function openJobDetail(jobId) {
       <p><strong>Nice to have:</strong> ${(reqs.nice_to_have || []).join(', ') || '—'}</p>
     `;
 
-    // Compensation
     const compSection = document.createElement('div');
     const salaryMin = comp.salary_min || 0;
     const salaryMax = comp.salary_max || 0;
@@ -297,7 +323,6 @@ async function openJobDetail(jobId) {
       <p><strong>Benefits:</strong> ${(comp.benefits || []).join(', ') || '—'}</p>
     `;
 
-    // Work arrangement
     const workSection = document.createElement('div');
     const remoteFriendly =
       typeof work.is_remote_friendly === 'boolean'
@@ -313,7 +338,6 @@ async function openJobDetail(jobId) {
       <p><strong>Timezone requirements:</strong> ${work.timezone_requirements || '—'}</p>
     `;
 
-    // Market signals
     const marketSection = document.createElement('div');
     marketSection.innerHTML = `
       <h3>Market signals</h3>
@@ -327,9 +351,7 @@ async function openJobDetail(jobId) {
       <p><strong>Extracted at:</strong> ${extracted.extracted_at || ''}</p>
     `;
 
-    // Notes with explicit Save button
     const notesWrapper = document.createElement('div');
-
     const notesLabel = document.createElement('label');
     notesLabel.textContent = 'Notes';
 
@@ -350,7 +372,6 @@ async function openJobDetail(jobId) {
     notesWrapper.appendChild(notesArea);
     notesWrapper.appendChild(notesSaveBtn);
 
-    // Assemble
     jobDetailEl.appendChild(headerRow);
     jobDetailEl.appendChild(link);
     jobDetailEl.appendChild(skills);
@@ -369,7 +390,6 @@ async function openJobDetail(jobId) {
   }
 }
 
-
 async function saveJobNotes(jobId, notes) {
   try {
     await sendNativeMessage({ action: 'updateJob', data: { id: jobId, notes } });
@@ -380,134 +400,183 @@ async function saveJobNotes(jobId, notes) {
   }
 }
 
-// Analytics tab (placeholder: just fetch and show JSON)
+// Analytics tab – one chart per skill type, one for titles, one for skills per stage
 async function loadAnalytics() {
-  const el = document.getElementById('analyticsContent');
-  el.textContent = 'Loading analytics...';
+  const summaryEl = document.getElementById('analyticsSummary');
+  summaryEl.textContent = 'Loading analytics...';
 
   try {
     const resp = await sendNativeMessage({ action: 'getAnalytics' });
 
     const statusStats = resp.statusStats || {};
-    const topSkills = resp.topSkills || [];
+    const skillsByCategory = resp.skillsByCategory || {};
     const skillsByStatus = resp.skillsByStatus || {};
-    const focusSkill = resp.focusSkill || '';
-    const focusSkillLocations = resp.focusSkillLocations || [];
+    const topJobTitles = resp.topJobTitles || [];
 
-    el.innerHTML = '';
-
-    const container = document.createElement('div');
-    container.className = 'analytics-container';
-
-    // 1) Status overview (small header)
     const total = statusStats.total || 0;
-    const statusSummary = document.createElement('div');
-    statusSummary.className = 'analytics-status-summary';
-    statusSummary.textContent =
+    summaryEl.textContent =
       `You have ${total} jobs tracked. ` +
       `Applied: ${statusStats.applied || 0}, ` +
       `Interview: ${statusStats.interview || 0}, ` +
       `Offer: ${statusStats.offer || 0}.`;
 
-    // 2) Top skills overall
-    const topSkillsSection = document.createElement('div');
-    topSkillsSection.className = 'analytics-section';
-    topSkillsSection.innerHTML = '<h3>Most requested skills</h3>';
-
-    const topSkillsList = document.createElement('ul');
-    topSkillsList.className = 'analytics-list';
-
-    topSkills.forEach((s) => {
-      const li = document.createElement('li');
-      const label = s.category
-        ? `${s.skill} (${s.category})`
-        : s.skill;
-      li.textContent = `${label} – in ${s.count} job${s.count === 1 ? '' : 's'}`;
-      topSkillsList.appendChild(li);
-    });
-
-    if (topSkills.length === 0) {
-      const li = document.createElement('li');
-      li.textContent = 'No skills extracted yet.';
-      topSkillsList.appendChild(li);
+    // Helper to build a simple bar chart
+    function buildBarChart(chartRef, canvasId, labels, data, label, color) {
+      const ctx = document.getElementById(canvasId);
+      if (!ctx) return null;
+      if (chartRef) chartRef.destroy();
+      return new Chart(ctx.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label,
+              data,
+              backgroundColor: color,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+          },
+          scales: {
+            x: {
+              ticks: { maxRotation: 60, minRotation: 0, autoSkip: true },
+            },
+            y: {
+              beginAtZero: true,
+            },
+          },
+        },
+      });
     }
 
-    topSkillsSection.appendChild(topSkillsList);
+    const prog = skillsByCategory['programming_language'] || [];
+    chartProgrammingLanguages = buildBarChart(
+      chartProgrammingLanguages,
+      'chartProgrammingLanguages',
+      prog.map((s) => s.skill),
+      prog.map((s) => s.count),
+      'Jobs',
+      '#2563eb'
+    );
 
-    // 3) Skills by status (to see what shows up where you’re progressing)
-    const byStatusSection = document.createElement('div');
-    byStatusSection.className = 'analytics-section';
-    byStatusSection.innerHTML = '<h3>Skills by pipeline stage</h3>';
+    // Frameworks chart currently has no category in DB, so either:
+    // - Hide it for now, or
+    // - Reuse "other" or "devops" until you add a real frameworks category
 
-    const statusContainer = document.createElement('div');
-    statusContainer.className = 'analytics-status-grid';
+    // Databases
+    const dbs = skillsByCategory['database'] || [];
+    chartDatabases = buildBarChart(
+      chartDatabases,
+      'chartDatabases',
+      dbs.map((s) => s.skill),
+      dbs.map((s) => s.count),
+      'Jobs',
+      '#f97316'
+    );
 
+    // Cloud platforms
+    const clouds = skillsByCategory['cloud'] || [];
+    chartCloudPlatforms = buildBarChart(
+      chartCloudPlatforms,
+      'chartCloudPlatforms',
+      clouds.map((s) => s.skill),
+      clouds.map((s) => s.count),
+      'Jobs',
+      '#6366f1'
+    );
+
+    // DevOps tools
+    const devops = skillsByCategory['devops'] || [];
+    chartDevopsTools = buildBarChart(
+      chartDevopsTools,
+      'chartDevopsTools',
+      devops.map((s) => s.skill),
+      devops.map((s) => s.count),
+      'Jobs',
+      '#22c55e'
+    );
+
+    // Other skills
+    const other = skillsByCategory['other'] || [];
+    chartOtherSkills = buildBarChart(
+      chartOtherSkills,
+      'chartOtherSkills',
+      other.map((s) => s.skill),
+      other.map((s) => s.count),
+      'Jobs',
+      '#a855f7'
+    );
+
+    // Job titles
+    chartJobTitles = buildBarChart(
+      chartJobTitles,
+      'chartJobTitles',
+      topJobTitles.map((t) => t.title),
+      topJobTitles.map((t) => t.count),
+      'Jobs',
+      '#0ea5e9'
+    );
+
+    // Skills by pipeline stage – grouped bar chart
     const statuses = ['saved', 'applied', 'interview', 'offer', 'rejected'];
+    const skillNamesSet = new Set();
     statuses.forEach((status) => {
-      const skills = skillsByStatus[status] || [];
-      const column = document.createElement('div');
-      column.className = 'analytics-status-column';
-      const title = document.createElement('div');
-      title.className = 'analytics-status-title';
-      const pretty =
-        status.charAt(0).toUpperCase() + status.slice(1);
-      title.textContent = pretty;
-      column.appendChild(title);
+      (skillsByStatus[status] || []).forEach((s) => skillNamesSet.add(s.skill));
+    });
+    const skillNames = Array.from(skillNamesSet);
 
-      const list = document.createElement('ul');
-      list.className = 'analytics-list';
-      if (skills.length === 0) {
-        const li = document.createElement('li');
-        li.textContent = '—';
-        list.appendChild(li);
-      } else {
-        skills.forEach((s) => {
-          const li = document.createElement('li');
-          li.textContent = `${s.skill} (${s.count})`;
-          list.appendChild(li);
-        });
-      }
-      column.appendChild(list);
-      statusContainer.appendChild(column);
+    const datasetsByStatus = statuses.map((status, idx) => {
+      const palette = ['#3b82f6', '#10b981', '#f59e0b', '#6366f1', '#ef4444'];
+      const data = skillNames.map((skill) => {
+        const list = skillsByStatus[status] || [];
+        const match = list.find((s) => s.skill === skill);
+        return match ? match.count : 0;
+      });
+      return {
+        label: status.charAt(0).toUpperCase() + status.slice(1),
+        data,
+        backgroundColor: palette[idx % palette.length],
+      };
     });
 
-    byStatusSection.appendChild(statusContainer);
-
-    // 4) Locations for focus skill (highest-demand skill)
-    const locationsSection = document.createElement('div');
-    locationsSection.className = 'analytics-section';
-    if (focusSkill) {
-      locationsSection.innerHTML = `<h3>Where “${focusSkill}” is in demand</h3>`;
-      const list = document.createElement('ul');
-      list.className = 'analytics-list';
-      if (focusSkillLocations.length === 0) {
-        const li = document.createElement('li');
-        li.textContent = 'No locations yet.';
-        list.appendChild(li);
-      } else {
-        focusSkillLocations.forEach((item) => {
-          const li = document.createElement('li');
-          li.textContent = `${item.location} – ${item.count} job${item.count === 1 ? '' : 's'}`;
-          list.appendChild(li);
-        });
-      }
-      locationsSection.appendChild(list);
-    } else {
-      locationsSection.innerHTML = '<h3>Skill locations</h3><p>No skills yet.</p>';
+    const ctxStatus = document.getElementById('chartSkillsByStatus');
+    if (ctxStatus) {
+      if (chartSkillsByStatus) chartSkillsByStatus.destroy();
+      chartSkillsByStatus = new Chart(ctxStatus.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: skillNames,
+          datasets: datasetsByStatus,
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { position: 'top' },
+            title: { display: false },
+          },
+          scales: {
+            x: {
+              ticks: { maxRotation: 60, minRotation: 0, autoSkip: true },
+            },
+            y: {
+              beginAtZero: true,
+            },
+          },
+        },
+      });
     }
-
-    container.appendChild(statusSummary);
-    container.appendChild(topSkillsSection);
-    container.appendChild(byStatusSection);
-    container.appendChild(locationsSection);
-    el.appendChild(container);
   } catch (err) {
     console.error('Failed to load analytics', err);
-    el.textContent =
+    summaryEl.textContent =
       'Could not load analytics. Check native helper installation.';
   }
 }
-
 
 // Settings tab: Perplexity key & host test
 const apiKeyInput = document.getElementById('perplexityApiKey');
