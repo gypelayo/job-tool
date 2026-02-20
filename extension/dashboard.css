@@ -300,3 +300,10 @@ nav {
 .notes-save-btn:hover {
   background: #1d4ed8;
 }
+
+.job-actions button.job-delete-btn {
+  background: #000000;
+}
+.job-actions button.job-delete-btn:hover {
+  background: #2e2e2e;
+}

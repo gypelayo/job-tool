@@ -180,6 +180,16 @@ func (db *DB) GetJobStats() (map[string]int, error) {
 	}, nil
 }
 
+func (db *DB) DeleteJob(id int64) error {
+	// Also delete from job_skills to keep it clean
+	_, err := db.Exec(`DELETE FROM job_skills WHERE job_id = ?`, id)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(`DELETE FROM jobs WHERE id = ?`, id)
+	return err
+}
+
 // SkillSummary is used for analytics responses.
 type SkillSummary struct {
 	SkillName     string

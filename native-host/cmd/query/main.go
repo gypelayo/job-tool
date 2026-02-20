@@ -175,6 +175,24 @@ func handleAPIRequest(req messaging.APIRequest, database *db.DB) {
 			Payload: map[string]any{"ok": true},
 		})
 
+	case "deleteJob":
+		idF, ok := req.Data["id"].(float64)
+		if !ok {
+			_ = messaging.SendAPIResponse(messaging.APIResponse{OK: false, Error: "missing id"})
+			return
+		}
+		id := int64(idF)
+
+		if err := database.DeleteJob(id); err != nil {
+			_ = messaging.SendAPIResponse(messaging.APIResponse{OK: false, Error: err.Error()})
+			return
+		}
+
+		_ = messaging.SendAPIResponse(messaging.APIResponse{
+			OK:      true,
+			Payload: map[string]any{"deleted": true},
+		})
+
 	case "listJobs":
 		jobs, err := database.ListJobs(100, 0, "")
 		if err != nil {

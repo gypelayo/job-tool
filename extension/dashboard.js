@@ -99,8 +99,14 @@ function renderJobs() {
     viewBtn.textContent = 'View';
     viewBtn.addEventListener('click', () => openJobDetail(job.id));
 
+    const deleteBtn = document.createElement('button');
+    deleteBtn.textContent = '❌';
+    deleteBtn.className = 'job-delete-btn';
+    deleteBtn.addEventListener('click', () => deleteJob(job.id));
+
     actions.appendChild(statusSelect);
     actions.appendChild(viewBtn);
+    actions.appendChild(deleteBtn);
 
     card.appendChild(main);
     card.appendChild(actions);
@@ -130,6 +136,21 @@ async function updateJobStatus(jobId, status) {
   }
 }
 
+async function deleteJob(jobId) {
+  if (!confirm('Remove this job from your list?')) return;
+  try {
+    await sendNativeMessage({ action: 'deleteJob', data: { id: jobId } });
+    // Remove from local array
+    allJobs = allJobs.filter((j) => j.id !== jobId);
+    renderJobs();
+    // If this job is currently open, hide detail
+    jobDetailEl.classList.add('hidden');
+    jobDetailEl.innerHTML = '';
+  } catch (err) {
+    console.error('Failed to delete job', err);
+  }
+}
+
 async function openJobDetail(jobId) {
   try {
     const resp = await sendNativeMessage({ action: 'getJob', data: { id: jobId } });
@@ -154,9 +175,8 @@ async function openJobDetail(jobId) {
 
     const subtitle = document.createElement('div');
     subtitle.className = 'subtitle';
-    subtitle.textContent = `${company.company_name || job.company || 'Unknown company'} · ${
-      company.location_full || job.location || 'Location not set'
-    }`;
+    subtitle.textContent = `${company.company_name || job.company || 'Unknown company'} · ${company.location_full || job.location || 'Location not set'
+      }`;
 
     // Close button
     const closeBtn = document.createElement('button');
@@ -192,9 +212,8 @@ async function openJobDetail(jobId) {
     link.style.marginBottom = '8px';
 
     const skills = document.createElement('div');
-    skills.innerHTML = `<strong>Skills:</strong> ${
-      (job.skills || []).join(', ') || 'None extracted'
-    }`;
+    skills.innerHTML = `<strong>Skills:</strong> ${(job.skills || []).join(', ') || 'None extracted'
+      }`;
 
     // Role (from extracted metadata/role_details)
     const metaSection = document.createElement('div');
@@ -246,12 +265,10 @@ async function openJobDetail(jobId) {
 
     reqSection.innerHTML = `
       <h3>Requirements</h3>
-      <p><strong>Experience:</strong> ${reqs.years_experience_min || 0}–${
-        reqs.years_experience_max || 0
+      <p><strong>Experience:</strong> ${reqs.years_experience_min || 0}–${reqs.years_experience_max || 0
       } years</p>
       <p><strong>Education:</strong> ${reqs.education_level || 'Not specified'}</p>
-      <p><strong>Specific degree required:</strong> ${
-        reqs.requires_specific_degree ? 'Yes' : 'No'
+      <p><strong>Specific degree required:</strong> ${reqs.requires_specific_degree ? 'Yes' : 'No'
       }</p>
       ${techLines || ''}
       <p><strong>Soft skills:</strong> ${(reqs.soft_skills || []).join(', ') || '—'}</p>
@@ -265,18 +282,16 @@ async function openJobDetail(jobId) {
     const currency = comp.salary_currency || '';
     compSection.innerHTML = `
       <h3>Compensation & benefits</h3>
-      <p><strong>Salary:</strong> ${
-        salaryMin || salaryMax
-          ? `${salaryMin}–${salaryMax} ${currency}`.trim()
-          : 'Not specified'
+      <p><strong>Salary:</strong> ${salaryMin || salaryMax
+        ? `${salaryMin}–${salaryMax} ${currency}`.trim()
+        : 'Not specified'
       }</p>
       <p><strong>Equity:</strong> ${comp.has_equity ? 'Yes' : 'No'}</p>
       <p><strong>Remote stipend:</strong> ${comp.has_remote_stipend ? 'Yes' : 'No'}</p>
       <p><strong>Visa sponsorship:</strong> ${comp.offers_visa_sponsorship ? 'Yes' : 'No'}</p>
       <p><strong>Health insurance:</strong> ${comp.offers_health_insurance ? 'Yes' : 'No'}</p>
       <p><strong>PTO:</strong> ${comp.offers_pto ? 'Yes' : 'No'}</p>
-      <p><strong>Professional development:</strong> ${
-        comp.offers_professional_development ? 'Yes' : 'No'
+      <p><strong>Professional development:</strong> ${comp.offers_professional_development ? 'Yes' : 'No'
       }</p>
       <p><strong>401k:</strong> ${comp.offers_401k ? 'Yes' : 'No'}</p>
       <p><strong>Benefits:</strong> ${(comp.benefits || []).join(', ') || '—'}</p>
@@ -303,10 +318,9 @@ async function openJobDetail(jobId) {
     marketSection.innerHTML = `
       <h3>Market signals</h3>
       <p><strong>Urgency:</strong> ${market.urgency_level || 'Standard'}</p>
-      <p><strong>Interview rounds:</strong> ${
-        market.interview_rounds !== undefined && market.interview_rounds !== null
-          ? market.interview_rounds
-          : 'Not specified'
+      <p><strong>Interview rounds:</strong> ${market.interview_rounds !== undefined && market.interview_rounds !== null
+        ? market.interview_rounds
+        : 'Not specified'
       }</p>
       <p><strong>Take home:</strong> ${market.has_take_home ? 'Yes' : 'No'}</p>
       <p><strong>Pair programming:</strong> ${market.has_pair_programming ? 'Yes' : 'No'}</p>
