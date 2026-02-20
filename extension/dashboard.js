@@ -148,7 +148,7 @@ async function openJobDetail(jobId) {
     jobDetailEl.innerHTML = '';
     jobDetailEl.classList.remove('hidden');
 
-    // Header: title, company, original link
+    // Header: title, subtitle
     const title = document.createElement('h2');
     title.textContent = meta.job_title || job.title || 'Untitled role';
 
@@ -157,6 +157,27 @@ async function openJobDetail(jobId) {
     subtitle.textContent = `${company.company_name || job.company || 'Unknown company'} · ${
       company.location_full || job.location || 'Location not set'
     }`;
+
+    // Close button
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Close';
+    closeBtn.className = 'job-detail-close-btn';
+    closeBtn.addEventListener('click', () => {
+      jobDetailEl.classList.add('hidden');
+      jobDetailEl.innerHTML = '';
+    });
+
+    const leftHeader = document.createElement('div');
+    leftHeader.appendChild(title);
+    leftHeader.appendChild(subtitle);
+
+    const headerRow = document.createElement('div');
+    headerRow.style.display = 'flex';
+    headerRow.style.justifyContent = 'space-between';
+    headerRow.style.alignItems = 'center';
+    headerRow.style.gap = '8px';
+    headerRow.appendChild(leftHeader);
+    headerRow.appendChild(closeBtn);
 
     console.log('job from host', job);
     console.log('extracted.source_url', extracted.source_url);
@@ -292,21 +313,31 @@ async function openJobDetail(jobId) {
       <p><strong>Extracted at:</strong> ${extracted.extracted_at || ''}</p>
     `;
 
-    // Notes
+    // Notes with explicit Save button
+    const notesWrapper = document.createElement('div');
+
     const notesLabel = document.createElement('label');
     notesLabel.textContent = 'Notes';
+
     const notesArea = document.createElement('textarea');
     notesArea.value = job.notes || '';
     notesArea.rows = 4;
     notesArea.style.width = '100%';
     notesArea.style.marginTop = '4px';
-    notesArea.addEventListener('change', () => {
+
+    const notesSaveBtn = document.createElement('button');
+    notesSaveBtn.textContent = 'Save notes';
+    notesSaveBtn.className = 'notes-save-btn';
+    notesSaveBtn.addEventListener('click', () => {
       saveJobNotes(job.id, notesArea.value);
     });
-    notesLabel.appendChild(notesArea);
 
-    jobDetailEl.appendChild(title);
-    jobDetailEl.appendChild(subtitle);
+    notesWrapper.appendChild(notesLabel);
+    notesWrapper.appendChild(notesArea);
+    notesWrapper.appendChild(notesSaveBtn);
+
+    // Assemble
+    jobDetailEl.appendChild(headerRow);
     jobDetailEl.appendChild(link);
     jobDetailEl.appendChild(skills);
     jobDetailEl.appendChild(document.createElement('hr'));
@@ -318,7 +349,7 @@ async function openJobDetail(jobId) {
     jobDetailEl.appendChild(workSection);
     jobDetailEl.appendChild(marketSection);
     jobDetailEl.appendChild(document.createElement('hr'));
-    jobDetailEl.appendChild(notesLabel);
+    jobDetailEl.appendChild(notesWrapper);
   } catch (err) {
     console.error('Failed to load job detail', err);
   }
