@@ -157,7 +157,7 @@ async function openJobDetail(jobId) {
     subtitle.textContent = `${company.company_name || job.company || 'Unknown company'} · ${
       company.location_full || job.location || 'Location not set'
     }`;
-    
+
     console.log('job from host', job);
     console.log('extracted.source_url', extracted.source_url);
 
@@ -339,15 +339,130 @@ async function saveJobNotes(jobId, notes) {
 async function loadAnalytics() {
   const el = document.getElementById('analyticsContent');
   el.textContent = 'Loading analytics...';
+
   try {
     const resp = await sendNativeMessage({ action: 'getAnalytics' });
-    el.textContent = JSON.stringify(resp, null, 2);
+
+    const statusStats = resp.statusStats || {};
+    const topSkills = resp.topSkills || [];
+    const skillsByStatus = resp.skillsByStatus || {};
+    const focusSkill = resp.focusSkill || '';
+    const focusSkillLocations = resp.focusSkillLocations || [];
+
+    el.innerHTML = '';
+
+    const container = document.createElement('div');
+    container.className = 'analytics-container';
+
+    // 1) Status overview (small header)
+    const total = statusStats.total || 0;
+    const statusSummary = document.createElement('div');
+    statusSummary.className = 'analytics-status-summary';
+    statusSummary.textContent =
+      `You have ${total} jobs tracked. ` +
+      `Applied: ${statusStats.applied || 0}, ` +
+      `Interview: ${statusStats.interview || 0}, ` +
+      `Offer: ${statusStats.offer || 0}.`;
+
+    // 2) Top skills overall
+    const topSkillsSection = document.createElement('div');
+    topSkillsSection.className = 'analytics-section';
+    topSkillsSection.innerHTML = '<h3>Most requested skills</h3>';
+
+    const topSkillsList = document.createElement('ul');
+    topSkillsList.className = 'analytics-list';
+
+    topSkills.forEach((s) => {
+      const li = document.createElement('li');
+      const label = s.category
+        ? `${s.skill} (${s.category})`
+        : s.skill;
+      li.textContent = `${label} – in ${s.count} job${s.count === 1 ? '' : 's'}`;
+      topSkillsList.appendChild(li);
+    });
+
+    if (topSkills.length === 0) {
+      const li = document.createElement('li');
+      li.textContent = 'No skills extracted yet.';
+      topSkillsList.appendChild(li);
+    }
+
+    topSkillsSection.appendChild(topSkillsList);
+
+    // 3) Skills by status (to see what shows up where you’re progressing)
+    const byStatusSection = document.createElement('div');
+    byStatusSection.className = 'analytics-section';
+    byStatusSection.innerHTML = '<h3>Skills by pipeline stage</h3>';
+
+    const statusContainer = document.createElement('div');
+    statusContainer.className = 'analytics-status-grid';
+
+    const statuses = ['saved', 'applied', 'interview', 'offer', 'rejected'];
+    statuses.forEach((status) => {
+      const skills = skillsByStatus[status] || [];
+      const column = document.createElement('div');
+      column.className = 'analytics-status-column';
+      const title = document.createElement('div');
+      title.className = 'analytics-status-title';
+      const pretty =
+        status.charAt(0).toUpperCase() + status.slice(1);
+      title.textContent = pretty;
+      column.appendChild(title);
+
+      const list = document.createElement('ul');
+      list.className = 'analytics-list';
+      if (skills.length === 0) {
+        const li = document.createElement('li');
+        li.textContent = '—';
+        list.appendChild(li);
+      } else {
+        skills.forEach((s) => {
+          const li = document.createElement('li');
+          li.textContent = `${s.skill} (${s.count})`;
+          list.appendChild(li);
+        });
+      }
+      column.appendChild(list);
+      statusContainer.appendChild(column);
+    });
+
+    byStatusSection.appendChild(statusContainer);
+
+    // 4) Locations for focus skill (highest-demand skill)
+    const locationsSection = document.createElement('div');
+    locationsSection.className = 'analytics-section';
+    if (focusSkill) {
+      locationsSection.innerHTML = `<h3>Where “${focusSkill}” is in demand</h3>`;
+      const list = document.createElement('ul');
+      list.className = 'analytics-list';
+      if (focusSkillLocations.length === 0) {
+        const li = document.createElement('li');
+        li.textContent = 'No locations yet.';
+        list.appendChild(li);
+      } else {
+        focusSkillLocations.forEach((item) => {
+          const li = document.createElement('li');
+          li.textContent = `${item.location} – ${item.count} job${item.count === 1 ? '' : 's'}`;
+          list.appendChild(li);
+        });
+      }
+      locationsSection.appendChild(list);
+    } else {
+      locationsSection.innerHTML = '<h3>Skill locations</h3><p>No skills yet.</p>';
+    }
+
+    container.appendChild(statusSummary);
+    container.appendChild(topSkillsSection);
+    container.appendChild(byStatusSection);
+    container.appendChild(locationsSection);
+    el.appendChild(container);
   } catch (err) {
     console.error('Failed to load analytics', err);
     el.textContent =
       'Could not load analytics. Check native helper installation.';
   }
 }
+
 
 // Settings tab: Perplexity key & host test
 const apiKeyInput = document.getElementById('perplexityApiKey');

@@ -189,6 +189,47 @@ nav {
   padding: 12px;
 }
 
+.analytics-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.analytics-status-summary {
+  font-size: 13px;
+  color: #374151;
+}
+
+.analytics-section h3 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+}
+
+.analytics-list {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 13px;
+}
+
+.analytics-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.analytics-status-column {
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.analytics-status-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
 /* Settings */
 
 .settings {

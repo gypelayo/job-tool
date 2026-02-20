@@ -179,3 +179,120 @@ func (db *DB) GetJobStats() (map[string]int, error) {
 		"rejected":  rejected,
 	}, nil
 }
+
+// SkillSummary is used for analytics responses.
+type SkillSummary struct {
+	SkillName     string
+	SkillCategory string
+	Count         int
+}
+
+func (db *DB) GetTopSkills(limit int) ([]SkillSummary, error) {
+	query := `
+        SELECT 
+            skill_name,
+            skill_category,
+            COUNT(*) AS cnt
+        FROM job_skills
+        GROUP BY skill_name, skill_category
+        ORDER BY cnt DESC, skill_name ASC
+        LIMIT ?
+    `
+	rows, err := db.Query(query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var res []SkillSummary
+	for rows.Next() {
+		var s SkillSummary
+		if err := rows.Scan(&s.SkillName, &s.SkillCategory, &s.Count); err != nil {
+			return nil, err
+		}
+		res = append(res, s)
+	}
+	return res, nil
+}
+
+func (db *DB) GetSkillsByStatus(limitPerStatus int) (map[string][]SkillSummary, error) {
+	// status -> top skills for jobs in that status
+	query := `
+        SELECT 
+            j.status,
+            s.skill_name,
+            s.skill_category,
+            COUNT(*) AS cnt
+        FROM job_skills s
+        JOIN jobs j ON j.id = s.job_id
+        GROUP BY j.status, s.skill_name, s.skill_category
+        ORDER BY j.status, cnt DESC
+    `
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string][]SkillSummary)
+
+	for rows.Next() {
+		var status, name, cat string
+		var cnt int
+		if err := rows.Scan(&status, &name, &cat, &cnt); err != nil {
+			return nil, err
+		}
+
+		list := result[status]
+		if len(list) < limitPerStatus {
+			list = append(list, SkillSummary{
+				SkillName:     name,
+				SkillCategory: cat,
+				Count:         cnt,
+			})
+			result[status] = list
+		}
+	}
+
+	return result, nil
+}
+
+func (db *DB) GetSkillLocations(skill string, limit int) ([]struct {
+	Location string
+	Count    int
+}, error) {
+	query := `
+        SELECT 
+            COALESCE(j.location_city, j.location_full, 'Unknown') AS loc,
+            COUNT(*) AS cnt
+        FROM job_skills s
+        JOIN jobs j ON j.id = s.job_id
+        WHERE s.skill_name = ?
+        GROUP BY COALESCE(j.location_city, j.location_full, 'Unknown')
+        ORDER BY cnt DESC
+        LIMIT ?
+    `
+	rows, err := db.Query(query, skill, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var res []struct {
+		Location string
+		Count    int
+	}
+
+	for rows.Next() {
+		var loc string
+		var cnt int
+		if err := rows.Scan(&loc, &cnt); err != nil {
+			return nil, err
+		}
+		res = append(res, struct {
+			Location string
+			Count    int
+		}{Location: loc, Count: cnt})
+	}
+	return res, nil
+}

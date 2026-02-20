@@ -285,14 +285,75 @@ func handleAPIRequest(req messaging.APIRequest, database *db.DB) {
 		})
 
 	case "getAnalytics":
-		stats, err := database.GetJobStats()
+		statusStats, err := database.GetJobStats()
 		if err != nil {
 			_ = messaging.SendAPIResponse(messaging.APIResponse{OK: false, Error: err.Error()})
 			return
 		}
+
+		topSkills, err := database.GetTopSkills(15)
+		if err != nil {
+			_ = messaging.SendAPIResponse(messaging.APIResponse{OK: false, Error: err.Error()})
+			return
+		}
+
+		skillsByStatus, err := database.GetSkillsByStatus(5)
+		if err != nil {
+			_ = messaging.SendAPIResponse(messaging.APIResponse{OK: false, Error: err.Error()})
+			return
+		}
+
+		// Optionally pick one “focus” skill: the most frequent one
+		focusSkill := ""
+		if len(topSkills) > 0 {
+			focusSkill = topSkills[0].SkillName
+		}
+
+		var focusSkillLocations []map[string]any
+		if focusSkill != "" {
+			locs, err := database.GetSkillLocations(focusSkill, 10)
+			if err == nil {
+				for _, l := range locs {
+					focusSkillLocations = append(focusSkillLocations, map[string]any{
+						"location": l.Location,
+						"count":    l.Count,
+					})
+				}
+			}
+		}
+
+		// Convert SkillSummary slices to plain maps for JSON
+		topSkillsPayload := make([]map[string]any, 0, len(topSkills))
+		for _, s := range topSkills {
+			topSkillsPayload = append(topSkillsPayload, map[string]any{
+				"skill":    s.SkillName,
+				"category": s.SkillCategory,
+				"count":    s.Count,
+			})
+		}
+
+		skillsByStatusPayload := make(map[string][]map[string]any)
+		for status, list := range skillsByStatus {
+			arr := make([]map[string]any, 0, len(list))
+			for _, s := range list {
+				arr = append(arr, map[string]any{
+					"skill":    s.SkillName,
+					"category": s.SkillCategory,
+					"count":    s.Count,
+				})
+			}
+			skillsByStatusPayload[status] = arr
+		}
+
 		_ = messaging.SendAPIResponse(messaging.APIResponse{
-			OK:      true,
-			Payload: map[string]any{"statusStats": stats},
+			OK: true,
+			Payload: map[string]any{
+				"statusStats":         statusStats,
+				"topSkills":           topSkillsPayload,
+				"skillsByStatus":      skillsByStatusPayload,
+				"focusSkill":          focusSkill,
+				"focusSkillLocations": focusSkillLocations,
+			},
 		})
 
 	default:
